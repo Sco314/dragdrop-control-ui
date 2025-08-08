@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Process Control System Drag-and-Drop</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; overflow: hidden; }
+    #background { position: relative; width: 100vw; height: 100vh; background: url("Process_Control_System_label_valve_liquid_level_sensor_controller.png") no-repeat center/contain; }
+    .label { position: absolute; padding: 5px 10px; background: white; border: 1px solid #333; cursor: grab; user-select: none; }
+    #word-bank { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px; }
+    .dropzone { border: 2px dashed #ccc; min-width: 80px; min-height: 20px; position: absolute; }
+    #toolbar { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px; }
+    #modeBtn { margin-bottom: 5px; }
+    #checkBtn { display: none; }
+  </style>
+</head>
+<body>
+  <div id="background"></div>
+  <div id="word-bank"></div>
+  <div id="toolbar">
+    <button id="modeBtn">Switch to Student Mode</button><br>
+    <button id="checkBtn">Check Answers</button>
+    <div id="score"></div>
+  </div>
+
+  <script>
+    const labels = ["Valve", "Liquid Level Sensor", "Controller"];
+    const background = document.getElementById("background");
+    const wordBank = document.getElementById("word-bank");
+    const modeBtn = document.getElementById("modeBtn");
+    const checkBtn = document.getElementById("checkBtn");
+    const scoreDisplay = document.getElementById("score");
+
+    let isTeacher = true;
+    let dropzones = [];
+    const teacherPassword = "teach123"; // simple password
+
+    function createWordBank() {
+      wordBank.innerHTML = "";
+      labels.forEach(label => {
+        const div = document.createElement("div");
+        div.className = "label";
+        div.textContent = label;
+        div.draggable = true;
+        div.style.position = "relative";
+        div.addEventListener("dragstart", e => {
+          e.dataTransfer.setData("text/plain", label);
+        });
+        wordBank.appendChild(div);
+      });
+    }
+
+    function addDropzone(x, y, label) {
+      const dz = document.createElement("div");
+      dz.className = "dropzone";
+      dz.style.left = `${x}px`;
+      dz.style.top = `${y}px`;
+      dz.dataset.correct = label;
+      dz.ondragover = e => e.preventDefault();
+      dz.ondrop = e => {
+        e.preventDefault();
+        const data = e.dataTransfer.getData("text/plain");
+        dz.textContent = data;
+        dz.style.border = "2px solid #333";
+        dz.dataset.answer = data;
+      };
+      background.appendChild(dz);
+      dropzones.push(dz);
+    }
+
+    background.addEventListener("click", e => {
+      if (!isTeacher) return;
+      const label = prompt("Enter correct label for this dropzone:");
+      if (!labels.includes(label)) {
+        alert("Label must match one of the draggable labels");
+        return;
+      }
+      addDropzone(e.offsetX, e.offsetY, label);
+    });
+
+    modeBtn.onclick = () => {
+      if (!isTeacher) {
+        isTeacher = true;
+        modeBtn.textContent = "Switch to Student Mode";
+        checkBtn.style.display = "none";
+        return;
+      }
+
+      const input = prompt("Enter teacher password to enter Student Mode:");
+      if (input !== teacherPassword) {
+        alert("Incorrect password.");
+        return;
+      }
+
+      isTeacher = false;
+      modeBtn.textContent = "Switch to Teacher Mode";
+      checkBtn.style.display = "inline-block";
+
+      dropzones.forEach(dz => {
+        dz.textContent = "";
+        dz.style.border = "2px dashed #ccc";
+        delete dz.dataset.answer;
+      });
+
+      createWordBank();
+    };
+
+    checkBtn.onclick = () => {
+      let correct = 0;
+      dropzones.forEach(dz => {
+        if (dz.dataset.answer === dz.dataset.correct) correct++;
+      });
+      scoreDisplay.textContent = `Score: ${correct} / ${dropzones.length}`;
+    };
+
+    createWordBank();
+  </script>
+</body>
+</html>
