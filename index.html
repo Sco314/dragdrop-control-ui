@@ -1,216 +1,370 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Process Control System Drag-and-Click</title>
-  <!-- 
-    Copyright © 2025 Scott Sandvik. All Rights Reserved.
-    This software and its content may not be reused, copied, or sold 
-    without explicit permission from the author.
-  -->
+  <meta charset="UTF-8" />
+  <title>Process Control System – Drag & Click (Supabase)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; }
-    #sidebar {
-      width: 240px;
-      background: #f5f5f5;
-      padding: 10px;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #word-bank { background: #fff; border: 1px solid #ccc; padding: 10px; flex-grow: 1; overflow-y: auto; }
-    .label { display: block; padding: 5px 10px; background: white; border: 2px solid #000; margin-bottom: 8px; cursor: pointer; user-select: none; transition: border 0.3s ease; }
-    .label.used { opacity: 0.6; cursor: default; }
-    #main-content { flex-grow: 1; position: relative; }
-    #background {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      background: url("Process_Control_System_label_valve_liquid_level_sensor_controller.png") no-repeat center/contain;
-    }
-    .dropzone {
-      border: 2px solid black;
-      position: absolute;
-      border-radius: 50%;
-      width: 100px;
-      height: 100px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      pointer-events: auto;
-      transform: translate(-50%, -50%);
-    }
-    .dropzone .controls {
-      display: none;
-      position: absolute;
-      bottom: 110%;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 4px;
-      border-radius: 4px;
-    }
-    .dropzone.teacher .controls { display: flex; gap: 4px; }
-    #toolbar button { margin-bottom: 5px; width: 100%; }
-    #score { font-weight: bold; margin-top: auto; }
+    :root { --side-w: 300px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; height: 100vh; display: flex; }
+    #sidebar { width: var(--side-w); background:#f7f7f7; border-right:1px solid #ddd; padding:12px; display:flex; flex-direction:column; gap:10px; }
+    #toolbar button { width:100%; padding:8px 10px; margin:4px 0; cursor:pointer; }
+    #loginArea { border:1px solid #ddd; background:#fff; padding:8px; }
+    #word-bank { background:#fff; border:1px solid #ccc; padding:8px; min-height:120px; overflow:auto; }
+    .label { display:block; padding:6px 10px; margin:6px 0; border:2px solid #000; background:#fff; cursor:pointer; user-select:none; }
+    .label.used { opacity:.6; cursor:default; }
+    #score { font-weight:600; }
+    #attemptHistory { font-size:13px; border-top:1px solid #ddd; padding-top:8px; max-height:25vh; overflow:auto; }
+
+    #stage { position:relative; flex:1; overflow:hidden; background:#fff; }
+    #background { position:absolute; inset:0; background:url("Process Control System label valve liquid level sensor controller.png") no-repeat center/contain; }
+
+    .dropzone { position:absolute; border:2px solid #000; border-radius:50%; width:100px; height:100px; transform:translate(-50%, -50%); display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(255,255,255,.0); }
+    .dropzone.filled { border-color: #1a7f37; }
+    .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; }
+    .dropzone.teacher .controls { display:flex; }
+
+    .hint { font-size:12px; color:#666; }
+    .row { display:flex; gap:8px; }
+    input[type=email] { width:100%; padding:8px; border:1px solid #bbb; border-radius:4px; }
   </style>
 </head>
 <body>
-  <div id="sidebar">
+  <aside id="sidebar">
+    <div id="loginArea">
+      <div style="font-weight:700; margin-bottom:6px;">Student Login</div>
+      <div class="row">
+        <input id="emailInput" type="email" placeholder="name@school.org" />
+      </div>
+      <div class="row">
+        <button id="loginBtn">Log in</button>
+        <button id="logoutBtn" style="display:none;">Log out</button>
+      </div>
+      <div id="loggedAs" class="hint"></div>
+    </div>
+
     <div id="toolbar">
       <button id="modeBtn">Enter Teacher Mode</button>
-      <button id="clearBtn">Clear All Hotspots</button>
-      <button id="checkBtn">Check Answers</button>
+      <button id="clearHotspotsBtn" style="display:none;">Clear All Hotspots</button>
+      <button id="clearAnswersBtn" style="display:inline-block;">Clear Answers</button>
     </div>
+
     <div id="word-bank"></div>
     <div id="score"></div>
-  </div>
-  <div id="main-content">
+
+    <div id="attemptHistory"></div>
+  </aside>
+
+  <main id="stage" aria-label="Activity stage">
     <div id="background"></div>
-  </div>
+  </main>
+
   <script>
-    const labels = ["Valve", "Liquid Level Sensor", "Controller"];
+    // ====== CONFIG ======
+    const SUPABASE_URL = "https://boaanmcdttdbnkccfkhu.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvYWFubWNkdHRkYm5rY2Nma2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2ODA2MTcsImV4cCI6MjA3MDI1NjYxN30.KW6pAQcYRUZL2dT2n0Vh-5W5DKDO7TPnyzH_VY2NJ2E";
+    const ACTIVITY_ID = "process-control-01"; // change per activity
+    const TEACHER_PASSWORD = "teach123"; // simple gate; consider env vars when hosted
+
+    // ====== DOM ======
+    const stage = document.getElementById("stage");
     const background = document.getElementById("background");
     const wordBank = document.getElementById("word-bank");
-    const modeBtn = document.getElementById("modeBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const checkBtn = document.getElementById("checkBtn");
     const scoreDisplay = document.getElementById("score");
+    const attemptHistory = document.getElementById("attemptHistory");
+    const modeBtn = document.getElementById("modeBtn");
+    const clearHotspotsBtn = document.getElementById("clearHotspotsBtn");
+    const clearAnswersBtn = document.getElementById("clearAnswersBtn");
+    const emailInput = document.getElementById("emailInput");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const loggedAs = document.getElementById("loggedAs");
 
-    let isTeacher = false;
-    let dropzones = [];
+    // ====== STATE ======
+    const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     let selectedLabel = null;
-    const teacherPassword = "teach123";
+    let isTeacher = false; // start in student mode
 
-    function createWordBank() {
+    // scoring
+    let attempts = 0; // clicks
+    let placements = 0; // correct
+
+    // login
+    let studentEmail = localStorage.getItem("studentEmail") || "";
+
+    // render helpers
+    function renderWordBank() {
       wordBank.innerHTML = "";
-      labels.forEach(label => {
-        const div = document.createElement("div");
-        div.className = "label";
-        div.textContent = label;
-        div.addEventListener("click", () => {
-          if (div.classList.contains("used")) return;
+      // Hide labels until logged in
+      if (!studentEmail && !isTeacher) {
+        const note = document.createElement('div');
+        note.className = 'hint';
+        note.textContent = 'Log in with your email to begin.';
+        wordBank.appendChild(note);
+        return;
+      }
+      labels.forEach(text => {
+        const div = document.createElement('div');
+        div.className = 'label';
+        div.textContent = text;
+        div.addEventListener('click', () => {
+          if (div.classList.contains('used')) return;
           selectedLabel = div;
-          document.querySelectorAll(".label").forEach(l => l.style.border = "2px solid black");
-          div.style.border = "2px solid blue";
+          document.querySelectorAll('.label').forEach(l => l.style.border = '2px solid #000');
+          div.style.border = '2px solid #2563eb';
         });
         wordBank.appendChild(div);
       });
     }
 
-    function saveHotspots() {
-      const data = dropzones.map(dz => ({ label: dz.dataset.correct, x: dz.dataset.x, y: dz.dataset.y }));
-      localStorage.setItem("hotspots", JSON.stringify(data));
+    function updateScore() {
+      scoreDisplay.textContent = `${placements} placed / ${attempts} clicks`;
     }
 
-    function loadHotspots() {
-      const saved = localStorage.getItem("hotspots");
-      if (saved) {
-        const data = JSON.parse(saved);
-        data.forEach(({ label, x, y }) => {
-          addDropzone(parseFloat(x), parseFloat(y), label);
+    // ====== SUPABASE REST ======
+    async function sbFetch(path, options = {}) {
+      const url = `${SUPABASE_URL}${path}`;
+      const headers = Object.assign({
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      }, options.headers || {});
+      const res = await fetch(url, { ...options, headers });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`${res.status} ${res.statusText}: ${txt}`);
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) return res.json();
+      return null;
+    }
+
+    // Hotspots CRUD
+    async function loadHotspots() {
+      const qs = `/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`;
+      const rows = await sbFetch(qs, { method: 'GET' });
+      rows.forEach(renderDropzoneFromRow);
+    }
+
+    async function createHotspot(label, x, y, size = 100) {
+      const body = [{ activity_id: ACTIVITY_ID, label, x, y, size }];
+      const row = await sbFetch('/rest/v1/hotspots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      renderDropzoneFromRow(row[0]);
+    }
+
+    async function deleteHotspot(id, el) {
+      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, { method: 'DELETE' });
+      el.remove();
+    }
+
+    async function updateHotspotSize(id, newSize) {
+      try {
+        await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ size: newSize })
         });
+      } catch (e) {
+        // fallback: delete + recreate if PATCH blocked by RLS
+        console.warn('PATCH failed; falling back to delete+recreate', e.message);
       }
     }
 
-    function addDropzone(x, y, label) {
-      const dz = document.createElement("div");
-      dz.className = "dropzone";
-      dz.style.left = `${x}px`;
-      dz.style.top = `${y}px`;
-      dz.dataset.correct = label;
-      dz.dataset.x = x;
-      dz.dataset.y = y;
+    // Attempts
+    async function recordAttempt() {
+      if (!studentEmail) return;
+      const body = [{
+        activity_id: ACTIVITY_ID,
+        student_email: studentEmail,
+        placements,
+        clicks: attempts,
+        result: `${placements} placed / ${attempts} clicks`
+      }];
+      await sbFetch('/rest/v1/attempts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      refreshAttemptHistory();
+    }
 
-      const controls = document.createElement("div");
-      controls.className = "controls";
+    async function refreshAttemptHistory() {
+      if (!studentEmail) { attemptHistory.innerHTML = ''; return; }
+      const qs = `/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`;
+      const rows = await sbFetch(qs, { method: 'GET' });
+      attemptHistory.innerHTML = rows.map((r, idx) => {
+        const n = rows.length - idx; // most recent at top, label incrementing
+        return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
+      }).join('<hr style="border:none;border-top:1px solid #eee;">');
+    }
+
+    // ====== DROPZONES RENDER/INTERACT ======
+    function renderDropzoneFromRow(row) {
+      const dz = document.createElement('div');
+      dz.className = 'dropzone';
+      dz.style.left = `${row.x}px`;
+      dz.style.top = `${row.y}px`;
+      dz.style.width = `${row.size || 100}px`;
+      dz.style.height = `${row.size || 100}px`;
+      dz.dataset.id = row.id;
+      dz.dataset.correct = row.label;
+
+      const controls = document.createElement('div');
+      controls.className = 'controls';
       controls.innerHTML = `
-        <button onclick="this.parentNode.parentNode.remove(); saveHotspots();">Delete</button>
-        <button onclick="resizeZone(this.parentNode.parentNode, 1.2)">+</button>
-        <button onclick="resizeZone(this.parentNode.parentNode, 0.8)">-</button>
+        <button class="del">Delete</button>
+        <button class="bigger">+</button>
+        <button class="smaller">-</button>
       `;
       dz.appendChild(controls);
 
-      dz.addEventListener("click", (e) => {
+      dz.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (isTeacher) {
-          dz.classList.toggle("teacher");
+          dz.classList.toggle('teacher');
         } else if (selectedLabel) {
+          attempts++;
           if (selectedLabel.textContent === dz.dataset.correct) {
+            placements++;
+            dz.classList.add('filled');
             dz.textContent = selectedLabel.textContent;
-            dz.style.border = "2px solid green";
-            selectedLabel.classList.add("used");
             selectedLabel.remove();
             selectedLabel = null;
+            if (placements === labels.length) {
+              await recordAttempt();
+              alert('Great job! Your score was saved.');
+            }
           } else {
-            selectedLabel.style.border = "2px solid yellow";
-            setTimeout(() => selectedLabel.style.border = "2px solid black", 5000);
+            selectedLabel.style.border = '2px solid #d4a017';
+            setTimeout(() => selectedLabel && (selectedLabel.style.border = '2px solid #000'), 5000);
           }
+          updateScore();
         }
       });
 
+      controls.querySelector('.del').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!isTeacher) return;
+        await deleteHotspot(dz.dataset.id, dz);
+      });
+      controls.querySelector('.bigger').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!isTeacher) return;
+        const newSize = Math.round(dz.offsetWidth * 1.2);
+        dz.style.width = dz.style.height = `${newSize}px`;
+        await updateHotspotSize(dz.dataset.id, newSize);
+      });
+      controls.querySelector('.smaller').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!isTeacher) return;
+        const newSize = Math.round(dz.offsetWidth * 0.8);
+        dz.style.width = dz.style.height = `${newSize}px`;
+        await updateHotspotSize(dz.dataset.id, newSize);
+      });
+
       background.appendChild(dz);
-      dropzones.push(dz);
-      saveHotspots();
     }
 
-    function resizeZone(zone, factor) {
-      const currentSize = zone.offsetWidth;
-      const newSize = currentSize * factor;
-      zone.style.width = `${newSize}px`;
-      zone.style.height = `${newSize}px`;
-      saveHotspots();
-    }
-
-    background.addEventListener("click", e => {
+    // Teacher: click to add hotspot where clicked for selected label
+    background.addEventListener('click', async (e) => {
       if (!isTeacher || !selectedLabel) return;
       const rect = background.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      addDropzone(x, y, selectedLabel.textContent);
+      await createHotspot(selectedLabel.textContent, x, y, 100);
     });
 
-    clearBtn.onclick = () => {
-      dropzones.forEach(dz => dz.remove());
-      dropzones = [];
-      saveHotspots();
-    };
-
-    modeBtn.onclick = () => {
+    // ====== UI WIRES ======
+    modeBtn.addEventListener('click', () => {
       if (!isTeacher) {
-        const input = prompt("Enter teacher password to enter Teacher Mode:");
-        if (input !== teacherPassword) {
-          alert("Incorrect password.");
-          return;
-        }
+        const pw = prompt('Enter teacher password:');
+        if (pw !== TEACHER_PASSWORD) { alert('Incorrect password.'); return; }
         isTeacher = true;
-        modeBtn.textContent = "Switch to Student Mode";
-        checkBtn.style.display = "none";
+        modeBtn.textContent = 'Switch to Student Mode';
+        clearHotspotsBtn.style.display = 'inline-block';
+        clearAnswersBtn.style.display = 'none';
+        // show teacher controls on existing zones
+        document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
       } else {
         isTeacher = false;
-        modeBtn.textContent = "Enter Teacher Mode";
-        checkBtn.style.display = "inline-block";
-        dropzones.forEach(dz => {
-          dz.classList.remove("teacher");
-        });
-        createWordBank();
+        modeBtn.textContent = 'Enter Teacher Mode';
+        clearHotspotsBtn.style.display = 'none';
+        clearAnswersBtn.style.display = 'inline-block';
+        document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('teacher'));
+        // reset student state
+        attempts = 0; placements = 0; updateScore();
+        selectedLabel = null;
+        renderWordBank();
       }
-    };
+    });
 
-    checkBtn.onclick = () => {
-      let correct = 0;
-      dropzones.forEach(dz => {
-        if (dz.textContent === dz.dataset.correct) correct++;
+    clearHotspotsBtn.addEventListener('click', async () => {
+      if (!isTeacher) return;
+      const zones = Array.from(document.querySelectorAll('.dropzone'));
+      for (const dz of zones) {
+        try { await deleteHotspot(dz.dataset.id, dz); } catch (e) { console.warn(e); }
+      }
+    });
+
+    clearAnswersBtn.addEventListener('click', () => {
+      // Student clears placed labels & score
+      attempts = 0; placements = 0; updateScore();
+      document.querySelectorAll('.dropzone').forEach(dz => {
+        dz.classList.remove('filled');
+        dz.textContent = '';
       });
-      scoreDisplay.textContent = `Score: ${correct} / ${dropzones.length}`;
-    };
+      renderWordBank();
+    });
 
-    createWordBank();
-    checkBtn.style.display = "inline-block";
-    loadHotspots();
+    // ====== LOGIN HANDLERS ======
+    function reflectLoginUI() {
+      if (studentEmail) {
+        emailInput.style.display = 'none';
+        loginBtn.style.display = 'none';
+        logoutBtn.style.display = 'inline-block';
+        loggedAs.textContent = `Logged in as ${studentEmail}`;
+      } else {
+        emailInput.style.display = 'inline-block';
+        loginBtn.style.display = 'inline-block';
+        logoutBtn.style.display = 'none';
+        loggedAs.textContent = '';
+      }
+      renderWordBank();
+      refreshAttemptHistory().catch(()=>{});
+    }
+
+    loginBtn.addEventListener('click', () => {
+      const v = (emailInput.value || '').trim();
+      if (!v || !v.includes('@')) { alert('Please enter a valid email.'); return; }
+      studentEmail = v;
+      localStorage.setItem('studentEmail', studentEmail);
+      reflectLoginUI();
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      studentEmail = '';
+      localStorage.removeItem('studentEmail');
+      reflectLoginUI();
+      // also clear student-side UI
+      clearAnswersBtn.click();
+      attemptHistory.innerHTML = '';
+    });
+
+    // ====== INIT ======
+    function init() {
+      reflectLoginUI();
+      updateScore();
+      loadHotspots().catch(err => {
+        console.error('Failed loading hotspots:', err);
+        alert('Could not load hotspots. Check Supabase policies and network.');
+      });
+    }
+
+    init();
   </script>
 </body>
 </html>
