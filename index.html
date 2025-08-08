@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <title>Process Control System Drag-and-Click</title>
+  <!-- 
+    Copyright © 2025 Scott Sandvik. All Rights Reserved.
+    This software and its content may not be reused, copied, or sold 
+    without explicit permission from the author.
+  -->
   <style>
     body { font-family: sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; }
     #sidebar {
@@ -24,30 +29,30 @@
       height: 100%;
       background: url("Process_Control_System_label_valve_liquid_level_sensor_controller.png") no-repeat center/contain;
     }
-    .hotspot {
+    .dropzone {
       border: 2px dashed #ccc;
-      border-radius: 50%;
       position: absolute;
+      border-radius: 50%;
       width: 100px;
       height: 100px;
       display: flex;
-      justify-content: center;
       align-items: center;
-      text-align: center;
+      justify-content: center;
       font-weight: bold;
-      background-color: rgba(255,255,255,0.5);
-      cursor: pointer;
+      pointer-events: auto;
     }
-    .hotspot-controls {
+    .dropzone .controls {
+      display: none;
       position: absolute;
-      top: 100%;
-      left: 0;
-      background: white;
+      bottom: 110%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff;
       border: 1px solid #ccc;
       padding: 4px;
-      display: flex;
-      flex-direction: column;
+      border-radius: 4px;
     }
+    .dropzone.teacher .controls { display: flex; gap: 4px; }
     #toolbar button { margin-bottom: 5px; width: 100%; }
     #score { font-weight: bold; margin-top: auto; }
   </style>
@@ -56,7 +61,7 @@
   <div id="sidebar">
     <div id="toolbar">
       <button id="modeBtn">Enter Teacher Mode</button>
-      <button id="clearBtn" style="display:none;">Clear All Hotspots</button>
+      <button id="clearBtn">Clear All Hotspots</button>
       <button id="checkBtn">Check Answers</button>
     </div>
     <div id="word-bank"></div>
@@ -70,12 +75,12 @@
     const background = document.getElementById("background");
     const wordBank = document.getElementById("word-bank");
     const modeBtn = document.getElementById("modeBtn");
-    const checkBtn = document.getElementById("checkBtn");
     const clearBtn = document.getElementById("clearBtn");
+    const checkBtn = document.getElementById("checkBtn");
     const scoreDisplay = document.getElementById("score");
 
     let isTeacher = false;
-    let hotspots = [];
+    let dropzones = [];
     let selectedLabel = null;
     const teacherPassword = "teach123";
 
@@ -95,41 +100,47 @@
       });
     }
 
-    function addHotspot(x, y, label) {
-      const hs = document.createElement("div");
-      hs.className = "hotspot";
-      hs.style.left = `${x - 50}px`;
-      hs.style.top = `${y - 50}px`;
-      hs.dataset.correct = label;
+    function saveHotspots() {
+      const data = dropzones.map(dz => ({ label: dz.dataset.correct, x: dz.dataset.x, y: dz.dataset.y }));
+      localStorage.setItem("hotspots", JSON.stringify(data));
+    }
 
-      hs.onclick = e => {
+    function loadHotspots() {
+      const saved = localStorage.getItem("hotspots");
+      if (saved) {
+        const data = JSON.parse(saved);
+        data.forEach(({ label, x, y }) => {
+          addDropzone(parseFloat(x), parseFloat(y), label);
+        });
+      }
+    }
+
+    function addDropzone(x, y, label) {
+      const dz = document.createElement("div");
+      dz.className = "dropzone";
+      dz.style.left = `${x}px`;
+      dz.style.top = `${y}px`;
+      dz.dataset.correct = label;
+      dz.dataset.x = x;
+      dz.dataset.y = y;
+
+      const controls = document.createElement("div");
+      controls.className = "controls";
+      controls.innerHTML = `
+        <button onclick="this.parentNode.parentNode.remove(); saveHotspots();">Delete</button>
+        <button onclick="resizeZone(this.parentNode.parentNode, 1.2)">+</button>
+        <button onclick="resizeZone(this.parentNode.parentNode, 0.8)">-</button>
+      `;
+      dz.appendChild(controls);
+
+      dz.addEventListener("click", (e) => {
         e.stopPropagation();
         if (isTeacher) {
-          const controls = document.createElement("div");
-          controls.className = "hotspot-controls";
-
-          const up = document.createElement("button");
-          up.textContent = "+";
-          up.onclick = () => resizeHotspot(hs, 10);
-          const down = document.createElement("button");
-          down.textContent = "−";
-          down.onclick = () => resizeHotspot(hs, -10);
-          const del = document.createElement("button");
-          del.textContent = "Delete";
-          del.onclick = () => {
-            hs.remove();
-            hotspots = hotspots.filter(h => h !== hs);
-          };
-
-          controls.appendChild(up);
-          controls.appendChild(down);
-          controls.appendChild(del);
-          hs.appendChild(controls);
-          setTimeout(() => controls.remove(), 3000);
+          dz.classList.toggle("teacher");
         } else if (selectedLabel) {
-          if (selectedLabel.textContent === hs.dataset.correct) {
-            hs.textContent = selectedLabel.textContent;
-            hs.style.border = "2px solid green";
+          if (selectedLabel.textContent === dz.dataset.correct) {
+            dz.textContent = selectedLabel.textContent;
+            dz.style.border = "2px solid green";
             selectedLabel.classList.add("used");
             selectedLabel.remove();
             selectedLabel = null;
@@ -138,16 +149,19 @@
             setTimeout(() => selectedLabel.style.border = "2px solid black", 5000);
           }
         }
-      };
+      });
 
-      background.appendChild(hs);
-      hotspots.push(hs);
+      background.appendChild(dz);
+      dropzones.push(dz);
+      saveHotspots();
     }
 
-    function resizeHotspot(hs, delta) {
-      const size = parseInt(hs.style.width || "100px");
-      const newSize = Math.max(30, size + delta);
-      hs.style.width = hs.style.height = `${newSize}px`;
+    function resizeZone(zone, factor) {
+      const currentSize = zone.offsetWidth;
+      const newSize = currentSize * factor;
+      zone.style.width = `${newSize}px`;
+      zone.style.height = `${newSize}px`;
+      saveHotspots();
     }
 
     background.addEventListener("click", e => {
@@ -155,8 +169,14 @@
       const rect = background.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      addHotspot(x, y, selectedLabel.textContent);
+      addDropzone(x, y, selectedLabel.textContent);
     });
+
+    clearBtn.onclick = () => {
+      dropzones.forEach(dz => dz.remove());
+      dropzones = [];
+      saveHotspots();
+    };
 
     modeBtn.onclick = () => {
       if (!isTeacher) {
@@ -168,31 +188,28 @@
         isTeacher = true;
         modeBtn.textContent = "Switch to Student Mode";
         checkBtn.style.display = "none";
-        clearBtn.style.display = "inline-block";
       } else {
         isTeacher = false;
         modeBtn.textContent = "Enter Teacher Mode";
         checkBtn.style.display = "inline-block";
-        clearBtn.style.display = "none";
+        dropzones.forEach(dz => {
+          dz.classList.remove("teacher");
+        });
         createWordBank();
       }
     };
 
-    clearBtn.onclick = () => {
-      hotspots.forEach(h => h.remove());
-      hotspots = [];
-    };
-
     checkBtn.onclick = () => {
       let correct = 0;
-      hotspots.forEach(h => {
-        if (h.textContent === h.dataset.correct) correct++;
+      dropzones.forEach(dz => {
+        if (dz.textContent === dz.dataset.correct) correct++;
       });
-      scoreDisplay.textContent = `Score: ${correct} / ${hotspots.length}`;
+      scoreDisplay.textContent = `Score: ${correct} / ${dropzones.length}`;
     };
 
     createWordBank();
     checkBtn.style.display = "inline-block";
+    loadHotspots();
   </script>
 </body>
 </html>
