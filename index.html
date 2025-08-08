@@ -2,27 +2,59 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Process Control System Drag-and-Drop</title>
+  <title>Process Control System Drag-and-Click</title>
+  <!-- 
+    Copyright © 2025 Scott Sandvik. All Rights Reserved.
+    This software and its content may not be reused, copied, or sold 
+    without explicit permission from the author.
+  -->
   <style>
-    body { font-family: sans-serif; margin: 0; padding: 0; overflow: hidden; }
-    #background { position: relative; width: 100vw; height: 100vh; background: url("Process_Control_System_label_valve_liquid_level_sensor_controller.png") no-repeat center/contain; }
-    .label { position: absolute; padding: 5px 10px; background: white; border: 1px solid #333; cursor: grab; user-select: none; }
-    #word-bank { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px; }
-    .dropzone { border: 2px dashed #ccc; min-width: 80px; min-height: 20px; position: absolute; }
-    #toolbar { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px; }
-    #modeBtn { margin-bottom: 5px; }
-    #checkBtn { display: none; }
+    body { font-family: sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; }
+    #sidebar {
+      width: 240px;
+      background: #f5f5f5;
+      padding: 10px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #word-bank { background: #fff; border: 1px solid #ccc; padding: 10px; flex-grow: 1; overflow-y: auto; }
+    .label { display: block; padding: 5px 10px; background: white; border: 2px solid #000; margin-bottom: 8px; cursor: pointer; user-select: none; transition: border 0.3s ease; }
+    .label.used { opacity: 0.6; cursor: default; }
+    #main-content { flex-grow: 1; position: relative; }
+    #background {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: url("Process_Control_System_label_valve_liquid_level_sensor_controller.png") no-repeat center/contain;
+    }
+    .dropzone {
+      border: 2px dashed #ccc;
+      min-width: 80px;
+      min-height: 20px;
+      position: absolute;
+      text-align: center;
+      line-height: 20px;
+      font-weight: bold;
+      pointer-events: auto;
+    }
+    #toolbar button { margin-bottom: 5px; width: 100%; }
+    #score { font-weight: bold; margin-top: auto; }
   </style>
 </head>
 <body>
-  <div id="background"></div>
-  <div id="word-bank"></div>
-  <div id="toolbar">
-    <button id="modeBtn">Switch to Student Mode</button><br>
-    <button id="checkBtn">Check Answers</button>
+  <div id="sidebar">
+    <div id="toolbar">
+      <button id="modeBtn">Enter Teacher Mode</button>
+      <button id="checkBtn">Check Answers</button>
+    </div>
+    <div id="word-bank"></div>
     <div id="score"></div>
   </div>
-
+  <div id="main-content">
+    <div id="background"></div>
+  </div>
   <script>
     const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     const background = document.getElementById("background");
@@ -31,9 +63,10 @@
     const checkBtn = document.getElementById("checkBtn");
     const scoreDisplay = document.getElementById("score");
 
-    let isTeacher = true;
+    let isTeacher = false;
     let dropzones = [];
-    const teacherPassword = "teach123"; // simple password
+    let selectedLabel = null;
+    const teacherPassword = "teach123";
 
     function createWordBank() {
       wordBank.innerHTML = "";
@@ -41,10 +74,11 @@
         const div = document.createElement("div");
         div.className = "label";
         div.textContent = label;
-        div.draggable = true;
-        div.style.position = "relative";
-        div.addEventListener("dragstart", e => {
-          e.dataTransfer.setData("text/plain", label);
+        div.addEventListener("click", () => {
+          if (div.classList.contains("used")) return;
+          selectedLabel = div;
+          document.querySelectorAll(".label").forEach(l => l.style.border = "2px solid black");
+          div.style.border = "2px solid blue";
         });
         wordBank.appendChild(div);
       });
@@ -56,14 +90,19 @@
       dz.style.left = `${x}px`;
       dz.style.top = `${y}px`;
       dz.dataset.correct = label;
-      dz.ondragover = e => e.preventDefault();
-      dz.ondrop = e => {
-        e.preventDefault();
-        const data = e.dataTransfer.getData("text/plain");
-        dz.textContent = data;
-        dz.style.border = "2px solid #333";
-        dz.dataset.answer = data;
-      };
+      dz.addEventListener("click", () => {
+        if (isTeacher || !selectedLabel) return;
+        if (selectedLabel.textContent === dz.dataset.correct) {
+          dz.textContent = selectedLabel.textContent;
+          dz.style.border = "2px solid green";
+          selectedLabel.classList.add("used");
+          selectedLabel.remove();
+          selectedLabel = null;
+        } else {
+          selectedLabel.style.border = "2px solid yellow";
+          setTimeout(() => selectedLabel.style.border = "2px solid black", 5000);
+        }
+      });
       background.appendChild(dz);
       dropzones.push(dz);
     }
@@ -72,48 +111,47 @@
       if (!isTeacher) return;
       const label = prompt("Enter correct label for this dropzone:");
       if (!labels.includes(label)) {
-        alert("Label must match one of the draggable labels");
+        alert("Label must match one of the labels in the list.");
         return;
       }
-      addDropzone(e.offsetX, e.offsetY, label);
+      const rect = background.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      addDropzone(x, y, label);
     });
 
     modeBtn.onclick = () => {
       if (!isTeacher) {
+        const input = prompt("Enter teacher password to enter Teacher Mode:");
+        if (input !== teacherPassword) {
+          alert("Incorrect password.");
+          return;
+        }
         isTeacher = true;
         modeBtn.textContent = "Switch to Student Mode";
         checkBtn.style.display = "none";
-        return;
+      } else {
+        isTeacher = false;
+        modeBtn.textContent = "Enter Teacher Mode";
+        checkBtn.style.display = "inline-block";
+        dropzones.forEach(dz => {
+          dz.textContent = "";
+          dz.style.border = "2px dashed #ccc";
+        });
+        createWordBank();
       }
-
-      const input = prompt("Enter teacher password to enter Student Mode:");
-      if (input !== teacherPassword) {
-        alert("Incorrect password.");
-        return;
-      }
-
-      isTeacher = false;
-      modeBtn.textContent = "Switch to Teacher Mode";
-      checkBtn.style.display = "inline-block";
-
-      dropzones.forEach(dz => {
-        dz.textContent = "";
-        dz.style.border = "2px dashed #ccc";
-        delete dz.dataset.answer;
-      });
-
-      createWordBank();
     };
 
     checkBtn.onclick = () => {
       let correct = 0;
       dropzones.forEach(dz => {
-        if (dz.dataset.answer === dz.dataset.correct) correct++;
+        if (dz.textContent === dz.dataset.correct) correct++;
       });
       scoreDisplay.textContent = `Score: ${correct} / ${dropzones.length}`;
     };
 
     createWordBank();
+    checkBtn.style.display = "inline-block";
   </script>
 </body>
 </html>
