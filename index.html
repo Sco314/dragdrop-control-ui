@@ -102,9 +102,9 @@
       hs.style.top = `${y - 50}px`;
       hs.dataset.correct = label;
 
-      if (isTeacher) {
-        hs.onclick = e => {
-          e.stopPropagation();
+      hs.onclick = e => {
+        e.stopPropagation();
+        if (isTeacher) {
           const controls = document.createElement("div");
           controls.className = "hotspot-controls";
 
@@ -126,10 +126,7 @@
           controls.appendChild(del);
           hs.appendChild(controls);
           setTimeout(() => controls.remove(), 3000);
-        };
-      } else {
-        hs.onclick = () => {
-          if (!selectedLabel) return;
+        } else if (selectedLabel) {
           if (selectedLabel.textContent === hs.dataset.correct) {
             hs.textContent = selectedLabel.textContent;
             hs.style.border = "2px solid green";
@@ -140,8 +137,9 @@
             selectedLabel.style.border = "2px solid yellow";
             setTimeout(() => selectedLabel.style.border = "2px solid black", 5000);
           }
-        };
-      }
+        }
+      };
+
       background.appendChild(hs);
       hotspots.push(hs);
     }
