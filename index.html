@@ -30,12 +30,15 @@
     }
     .dropzone.filled { border-color: #1a7f37; }
     .dropzone .label-text {
-      pointer-events:none;               /* clicks still go to the hotspot */
-      font-weight:700;
-      width:90%;                         /* keep away from border curve */
-      white-space:normal; word-wrap:break-word; overflow-wrap:anywhere;
-    }
-
+  pointer-events: none;
+  font-weight: 700;
+  width: 90%;
+  text-align: center;
+  white-space: normal;          /* allow wrapping between words */
+  word-break: keep-all;         /* don't break inside words */
+  overflow-wrap: break-word;    /* wrap only at word boundaries */
+  line-height: 1.1;
+}
     .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; }
     .dropzone.teacher .controls { display:flex; }
 
