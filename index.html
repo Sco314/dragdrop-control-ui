@@ -21,8 +21,21 @@
     #imgWrap { position:relative; max-width:100%; max-height:100%; }
     #bgImg { display:block; max-width:100%; height:auto; }
 
-    .dropzone { position:absolute; border:2px solid #000; border-radius:50%; width:100px; height:100px; transform:translate(-50%, -50%); display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(255,255,255,.0); pointer-events:auto; }
+    .dropzone {
+      position:absolute; border:2px solid #000; border-radius:50%;
+      width:100px; height:100px; transform:translate(-50%, -50%);
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,.0); pointer-events:auto;
+      text-align:center; padding:4px; line-height:1.15;
+    }
     .dropzone.filled { border-color: #1a7f37; }
+    .dropzone .label-text {
+      pointer-events:none;               /* clicks still go to the hotspot */
+      font-weight:700;
+      width:90%;                         /* keep away from border curve */
+      white-space:normal; word-wrap:break-word; overflow-wrap:anywhere;
+    }
+
     .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; }
     .dropzone.teacher .controls { display:flex; }
 
@@ -89,16 +102,16 @@
     const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     let selectedLabel = null;
     let isTeacher = false; // start in student mode
-
-    let attempts = 0; // clicks
-    let placements = 0; // correct
+    let attempts = 0;      // clicks
+    let placements = 0;    // correct
     let studentEmail = localStorage.getItem("studentEmail") || "";
     let dzEls = [];
 
-    // ====== RENDER ======
+    // ====== RENDER HELPERS ======
     function renderWordBank() {
       wordBank.innerHTML = "";
-      if (!studentEmail && !isTeacher) {
+      // Only hide labels if we're in STUDENT mode with no login
+      if (!isTeacher && !studentEmail) {
         const note = document.createElement('div');
         note.className = 'hint';
         note.textContent = 'Log in with your email to begin.';
@@ -133,7 +146,6 @@
       const res = await fetch(url, { ...options, headers });
       if (!res.ok) {
         const txt = await res.text();
-        console.error('Supabase error', res.status, res.statusText, txt);
         throw new Error(`${res.status} ${res.statusText}: ${txt}`);
       }
       const ct = res.headers.get('content-type') || '';
@@ -141,6 +153,7 @@
       return null;
     }
 
+    // Hotspots CRUD (percent-based)
     async function loadHotspots() {
       const qs = `/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`;
       const rows = await sbFetch(qs, { method: 'GET' });
@@ -153,25 +166,14 @@
       return { left: rect.left, top: rect.top, w: rect.width, h: rect.height };
     }
 
-    // Create hotspot (sends pct fields + legacy placeholders x/y/size)
     async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
-      const body = [{
-        activity_id: ACTIVITY_ID,
-        label,
-        x_pct: Math.min(1, Math.max(0, xPct)),
-        y_pct: Math.min(1, Math.max(0, yPct)),
-        size_pct: sizePct,
-        // legacy placeholders (avoid NOT NULL errors if present)
-        x: 0, y: 0, size: 1
-      }];
+      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
       const row = await sbFetch('/rest/v1/hotspots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
         body: JSON.stringify(body)
       });
       renderDropzoneFromRow(row[0]);
-      const dz = document.querySelector(`.dropzone[data-id="${row[0].id}"]`);
-      if (dz) positionDropzone(dz);
+      positionDropzone(document.querySelector(`.dropzone[data-id="${row[0].id}"]`));
     }
 
     async function deleteHotspot(id, el) {
@@ -187,6 +189,7 @@
       });
     }
 
+    // Attempts
     async function recordAttempt() {
       if (!studentEmail) return;
       const body = [{
@@ -209,7 +212,7 @@
       const qs = `/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`;
       const rows = await sbFetch(qs, { method: 'GET' });
       attemptHistory.innerHTML = rows.map((r, idx) => {
-        const n = rows.length - idx;
+        const n = rows.length - idx; // most recent at top
         return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
       }).join('<hr style="border:none;border-top:1px solid #eee;">');
     }
@@ -226,7 +229,7 @@
         const xPct = 0, yPct = 0;
         dz.dataset.xPct = xPct;
         dz.dataset.yPct = yPct;
-        dz.dataset.sizePct = (row.size || 100) / (w || 1);
+        dz.dataset.sizePct = (row.size || 100) / w;
       } else {
         dz.dataset.xPct = row.x_pct;
         dz.dataset.yPct = row.y_pct;
@@ -242,17 +245,28 @@
       `;
       dz.appendChild(controls);
 
+      // Student click
       dz.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (isTeacher) return;
         if (!selectedLabel) return;
+
         attempts++;
         if (selectedLabel.textContent === dz.dataset.correct) {
           placements++;
           dz.classList.add('filled');
-          dz.textContent = selectedLabel.textContent;
+
+          // Put centered text inside, keep controls alive
+          const txt = document.createElement('div');
+          txt.className = 'label-text';
+          txt.textContent = selectedLabel.textContent;
+          // remove any old label text first
+          dz.querySelectorAll('.label-text').forEach(n => n.remove());
+          dz.appendChild(txt);
+
           selectedLabel.remove();
           selectedLabel = null;
+
           if (placements === labels.length) {
             await recordAttempt();
             alert('Great job! Your score was saved.');
@@ -264,20 +278,19 @@
         updateScore();
       });
 
+      // Teacher controls
       controls.querySelector('.del').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return; await deleteHotspot(dz.dataset.id, dz);
       });
       controls.querySelector('.bigger').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
         const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
-        dz.dataset.sizePct = newPct; positionDropzone(dz);
-        await updateHotspotSize(dz.dataset.id, newPct);
+        dz.dataset.sizePct = newPct; positionDropzone(dz); await updateHotspotSize(dz.dataset.id, newPct);
       });
       controls.querySelector('.smaller').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
         const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
-        dz.dataset.sizePct = newPct; positionDropzone(dz);
-        await updateHotspotSize(dz.dataset.id, newPct);
+        dz.dataset.sizePct = newPct; positionDropzone(dz); await updateHotspotSize(dz.dataset.id, newPct);
       });
 
       imgWrap.appendChild(dz);
@@ -298,18 +311,14 @@
 
     function positionAllDropzones() { dzEls.forEach(positionDropzone); }
 
-    // Teacher: click image to add hotspot
+    // Teacher: click to add hotspot (percent coords)
     const DEFAULT_SIZE_PCT = 0.12;
     imgWrap.addEventListener('click', async (e) => {
       if (!isTeacher || !selectedLabel) return;
       const rect = bgImg.getBoundingClientRect();
       const xPct = (e.clientX - rect.left) / rect.width;
       const yPct = (e.clientY - rect.top) / rect.height;
-      try {
-        await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
-      } catch (err) {
-        alert('Could not save hotspot (check Supabase policies / keys).');
-      }
+      await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
     });
 
     // ====== UI WIRES ======
@@ -318,79 +327,119 @@
         const pw = prompt('Enter teacher password:');
         if (pw !== TEACHER_PASSWORD) { alert('Incorrect password.'); return; }
         isTeacher = true;
+        selectedLabel = null;                 // reset selection
         modeBtn.textContent = 'Switch to Student Mode';
         clearHotspotsBtn.style.display = 'inline-block';
         clearAnswersBtn.style.display = 'none';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
+        imgUploadTrigger.style.display = 'inline-block';
+        renderWordBank();                     // <— show labels in Teacher mode
       } else {
         isTeacher = false;
         modeBtn.textContent = 'Enter Teacher Mode';
         clearHotspotsBtn.style.display = 'none';
         clearAnswersBtn.style.display = 'inline-block';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('teacher'));
-        attempts = 0; placements = 0; updateScore(); selectedLabel = null; renderWordBank();
+        imgUploadTrigger.style.display = 'none';
+        attempts = 0; placements = 0; updateScore();
+        selectedLabel = null;
+        renderWordBank();                     // re-render for student view
       }
     });
 
     clearHotspotsBtn.addEventListener('click', async () => {
       if (!isTeacher) return;
       const zones = Array.from(document.querySelectorAll('.dropzone'));
-      for (const dz of zones) { try { await deleteHotspot(dz.dataset.id, dz); } catch (e) {} }
+      for (const dz of zones) {
+        try { await deleteHotspot(dz.dataset.id, dz); } catch (e) { console.warn(e); }
+      }
     });
 
     clearAnswersBtn.addEventListener('click', () => {
+      // Student clears placed labels & score
       attempts = 0; placements = 0; updateScore();
-      document.querySelectorAll('.dropzone').forEach(dz => { dz.classList.remove('filled'); dz.textContent = ''; });
+      document.querySelectorAll('.dropzone').forEach(dz => {
+        dz.classList.remove('filled');
+        dz.querySelectorAll('.label-text').forEach(n => n.remove()); // remove only placed text
+      });
       renderWordBank();
     });
 
-    // ====== LOGIN ======
+    // ====== LOGIN HANDLERS ======
     function reflectLoginUI() {
       if (studentEmail) {
-        emailInput.style.display = 'none'; loginBtn.style.display = 'none';
-        logoutBtn.style.display = 'inline-block'; loggedAs.textContent = `Logged in as ${studentEmail}`;
+        emailInput.style.display = 'none';
+        loginBtn.style.display = 'none';
+        logoutBtn.style.display = 'inline-block';
+        loggedAs.textContent = `Logged in as ${studentEmail}`;
       } else {
-        emailInput.style.display = 'inline-block'; loginBtn.style.display = 'inline-block';
-        logoutBtn.style.display = 'none'; loggedAs.textContent = '';
+        emailInput.style.display = 'inline-block';
+        loginBtn.style.display = 'inline-block';
+        logoutBtn.style.display = 'none';
+        loggedAs.textContent = '';
       }
-      renderWordBank(); refreshAttemptHistory().catch(()=>{});
+      renderWordBank();
+      refreshAttemptHistory().catch(()=>{});
     }
 
     loginBtn.addEventListener('click', () => {
       const v = (emailInput.value || '').trim();
       if (!v || !v.includes('@')) { alert('Please enter a valid email.'); return; }
-      studentEmail = v; localStorage.setItem('studentEmail', studentEmail); reflectLoginUI();
+      studentEmail = v;
+      localStorage.setItem('studentEmail', studentEmail);
+      reflectLoginUI();
     });
 
     logoutBtn.addEventListener('click', () => {
-      studentEmail = ''; localStorage.removeItem('studentEmail'); reflectLoginUI();
-      clearAnswersBtn.click(); attemptHistory.innerHTML = '';
+      studentEmail = '';
+      localStorage.removeItem('studentEmail');
+      reflectLoginUI();
+      clearAnswersBtn.click();
+      attemptHistory.innerHTML = '';
     });
 
     // ====== INIT ======
     function init() {
-      reflectLoginUI(); updateScore();
+      reflectLoginUI();
+      updateScore();
+
       const doLoad = async () => {
-        try { await loadHotspots(); positionAllDropzones(); }
-        catch (err) { console.error('Failed loading hotspots:', err); alert('Could not load hotspots. Check Supabase policies and network.'); }
+        try {
+          await loadHotspots();
+          positionAllDropzones();
+        } catch (err) {
+          console.error('Failed loading hotspots:', err);
+          alert('Could not load hotspots. Check Supabase policies and network.');
+        }
       };
-      if (bgImg.complete) doLoad(); else bgImg.addEventListener('load', doLoad, { once:true });
+
+      if (bgImg.complete) doLoad();
+      else bgImg.addEventListener('load', doLoad, { once: true });
+
       window.addEventListener('resize', positionAllDropzones);
     }
 
-    // Optional: image upload (session only)
+    // OPTIONAL: teacher image upload (local preview)
     const uploadBtn = document.createElement('input');
-    uploadBtn.type = 'file'; uploadBtn.accept = 'image/*'; uploadBtn.style.display = 'none';
+    uploadBtn.type = 'file';
+    uploadBtn.accept = 'image/*';
+    uploadBtn.style.display = 'none';
     document.getElementById('toolbar').appendChild(uploadBtn);
     const imgUploadTrigger = document.createElement('button');
-    imgUploadTrigger.textContent = 'Change Background Image'; imgUploadTrigger.style.display = 'none';
+    imgUploadTrigger.textContent = 'Change Background Image';
+    imgUploadTrigger.style.display = 'none';
     document.getElementById('toolbar').insertBefore(imgUploadTrigger, document.getElementById('clearHotspotsBtn'));
+
     imgUploadTrigger.addEventListener('click', () => uploadBtn.click());
     uploadBtn.addEventListener('change', (e) => {
       if (!isTeacher) return;
-      const file = e.target.files?.[0]; if (!file) return;
+      const file = e.target.files?.[0];
+      if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => { bgImg.src = reader.result; dzEls = []; document.querySelectorAll('.dropzone').forEach(el => el.remove()); };
+      reader.onload = () => {
+        bgImg.src = reader.result;
+        dzEls = []; document.querySelectorAll('.dropzone').forEach(el => el.remove());
+      };
       reader.readAsDataURL(file);
     });
 
