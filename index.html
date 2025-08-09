@@ -65,7 +65,6 @@
 
   <main id="stage" aria-label="Activity stage">
     <div id="imgWrap">
-      <!-- Make sure this PNG is in the same folder as this HTML -->
       <img id="bgImg" alt="Activity diagram" src="Process_Control_System_label_valve_liquid_level_sensor_controller.png" />
     </div>
   </main>
@@ -95,21 +94,14 @@
     const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     let selectedLabel = null;
     let isTeacher = false; // start in student mode
-
-    // scoring
     let attempts = 0; // clicks
     let placements = 0; // correct
-
-    // login
     let studentEmail = localStorage.getItem("studentEmail") || "";
-
-    // track dropzones in DOM for resize recalcs
     let dzEls = [];
 
-    // render helpers
+    // ====== RENDER HELPERS ======
     function renderWordBank() {
       wordBank.innerHTML = "";
-      // Hide labels until logged in (in student mode)
       if (!studentEmail && !isTeacher) {
         const note = document.createElement('div');
         note.className = 'hint';
@@ -152,7 +144,7 @@
       return null;
     }
 
-    // Hotspots CRUD (percent-based)
+    // ====== HOTSPOTS ======
     async function loadHotspots() {
       const qs = `/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`;
       const rows = await sbFetch(qs, { method: 'GET' });
@@ -165,32 +157,124 @@
       return { left: rect.left, top: rect.top, w: rect.width, h: rect.height };
     }
 
-    // accept pct coords directly
-    async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
-      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
-      const row = await sbFetch('/rest/v1/hotspots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-        body: JSON.stringify(body)
+    function renderDropzoneFromRow(row) {
+      const dz = document.createElement('div');
+      dz.className = 'dropzone';
+      dz.dataset.id = row.id ?? `temp-${Math.random().toString(36).slice(2)}`;
+      dz.dataset.correct = row.label;
+
+      if (row.x_pct == null || row.y_pct == null) {
+        const { w } = imgDims();
+        const xPct = 0.5, yPct = 0.5;
+        dz.dataset.xPct = xPct;
+        dz.dataset.yPct = yPct;
+        dz.dataset.sizePct = (row.size || 100) / w;
+      } else {
+        dz.dataset.xPct = row.x_pct;
+        dz.dataset.yPct = row.y_pct;
+        dz.dataset.sizePct = row.size_pct ?? 0.12;
+      }
+
+      const controls = document.createElement('div');
+      controls.className = 'controls';
+      controls.innerHTML = `
+        <button class="del">Delete</button>
+        <button class="bigger">+</button>
+        <button class="smaller">-</button>
+      `;
+      dz.appendChild(controls);
+
+      // Student click behavior
+      dz.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (isTeacher) return;
+        if (!selectedLabel) return;
+
+        attempts++;
+        if (selectedLabel.textContent === dz.dataset.correct) {
+          placements++;
+          dz.classList.add('filled');
+          dz.textContent = selectedLabel.textContent;
+          selectedLabel.remove();
+          selectedLabel = null;
+
+          if (placements === labels.length) {
+            await recordAttempt();
+            alert('Great job! Your score was saved.');
+          }
+        } else {
+          selectedLabel.style.border = '2px solid #d4a017';
+          setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
+        }
+        updateScore();
       });
-      renderDropzoneFromRow(row[0]);
-      positionDropzone(document.querySelector(`.dropzone[data-id="${row[0].id}"]`));
-    }
 
-    async function deleteHotspot(id, el) {
-      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, { method: 'DELETE' });
-      el.remove();
-      dzEls = dzEls.filter(x => x !== el);
-    }
-
-    async function updateHotspotSize(id, newSizePct) {
-      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ size_pct: newSizePct })
+      // Teacher controls
+      controls.querySelector('.del').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!isTeacher) return;
+        // if it's a temp node never saved, just remove
+        if (dz.dataset.id?.startsWith('temp-')) { dz.remove(); dzEls = dzEls.filter(x => x !== dz); return; }
+        await deleteHotspot(dz.dataset.id, dz);
       });
+      controls.querySelector('.bigger').addEventListener('click', async (e) => {
+        e.stopPropagation(); if (!isTeacher) return;
+        const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
+        dz.dataset.sizePct = newPct; positionDropzone(dz);
+        if (!dz.dataset.id?.startsWith('temp-')) await updateHotspotSize(dz.dataset.id, newPct);
+      });
+      controls.querySelector('.smaller').addEventListener('click', async (e) => {
+        e.stopPropagation(); if (!isTeacher) return;
+        const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
+        dz.dataset.sizePct = newPct; positionDropzone(dz);
+        if (!dz.dataset.id?.startsWith('temp-')) await updateHotspotSize(dz.dataset.id, newPct);
+      });
+
+      imgWrap.appendChild(dz);
+      dzEls.push(dz);
+      positionDropzone(dz);
     }
 
-    // Attempts
+    function positionDropzone(dz) {
+      const { w, h } = imgDims();
+      const x = parseFloat(dz.dataset.xPct) * w;
+      const y = parseFloat(dz.dataset.yPct) * h;
+      const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w;
+      dz.style.left = `${x}px`;
+      dz.style.top = `${y}px`;
+      dz.style.width = `${sz}px`;
+      dz.style.height = `${sz}px`;
+    }
+
+    function positionAllDropzones() {
+      dzEls.forEach(positionDropzone);
+    }
+
+    // Create & save hotspot (optimistic UI)
+    async function createAndSaveHotspot(label, xPct, yPct, sizePct) {
+      // show immediately
+      const tempRow = { id: null, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct };
+      renderDropzoneFromRow(tempRow);
+      const tempEl = dzEls[dzEls.length - 1];
+
+      try {
+        const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
+        const rows = await sbFetch('/rest/v1/hotspots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify(body)
+        });
+        const saved = rows[0];
+        tempEl.dataset.id = saved.id;
+      } catch (err) {
+        console.error('Failed to save hotspot:', err);
+        alert('Could not save hotspot (check Supabase policies / keys). The temporary hotspot will be removed.');
+        tempEl.remove();
+        dzEls = dzEls.filter(x => x !== tempEl);
+      }
+    }
+
+    // ====== ATTEMPTS ======
     async function recordAttempt() {
       if (!studentEmail) return;
       const body = [{
@@ -213,125 +297,25 @@
       const qs = `/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`;
       const rows = await sbFetch(qs, { method: 'GET' });
       attemptHistory.innerHTML = rows.map((r, idx) => {
-        const n = rows.length - idx; // most recent at top
+        const n = rows.length - idx;
         return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
       }).join('<hr style="border:none;border-top:1px solid #eee;">');
     }
 
-    // ====== DROPZONES RENDER/INTERACT ======
-    function renderDropzoneFromRow(row) {
-      const dz = document.createElement('div');
-      dz.className = 'dropzone';
-      dz.dataset.id = row.id;
-      dz.dataset.correct = row.label;
-
-      if (row.x_pct == null || row.y_pct == null) {
-        // fallback for old rows: convert pixels to pct
-        const { w, h } = imgDims();
-        const xPct = Math.max(0, Math.min(1, (row.x || 0) / w));
-        const yPct = Math.max(0, Math.min(1, (row.y || 0) / h));
-        dz.dataset.xPct = xPct;
-        dz.dataset.yPct = yPct;
-        dz.dataset.sizePct = (row.size || 100) / w;
-      } else {
-        dz.dataset.xPct = row.x_pct;
-        dz.dataset.yPct = row.y_pct;
-        dz.dataset.sizePct = row.size_pct ?? 0.12;
-      }
-
-      const controls = document.createElement('div');
-      controls.className = 'controls';
-      controls.innerHTML = `
-        <button class="del">Delete</button>
-        <button class="bigger">+</button>
-        <button class="smaller">-</button>
-      `;
-      dz.appendChild(controls);
-
-      // Student click behavior
-      dz.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (isTeacher) return;            // teacher uses controls only
-        if (!selectedLabel) return;
-
-        attempts++;
-        if (selectedLabel.textContent === dz.dataset.correct) {
-          placements++;
-          dz.classList.add('filled');
-          dz.textContent = selectedLabel.textContent;
-          selectedLabel.remove();
-          selectedLabel = null;
-
-          if (placements === labels.length) {
-            await recordAttempt();
-            alert('Great job! Your score was saved.');
-          }
-        } else {
-          selectedLabel.style.border = '2px solid #d4a017';
-          setTimeout(() => {
-            if (selectedLabel) selectedLabel.style.border = '2px solid #000';
-          }, 5000);
-        }
-        updateScore();
-      });
-
-      // Teacher controls
-      controls.querySelector('.del').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!isTeacher) return;
-        await deleteHotspot(dz.dataset.id, dz);
-      });
-      controls.querySelector('.bigger').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!isTeacher) return;
-        const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
-        dz.dataset.sizePct = newPct;
-        positionDropzone(dz);
-        await updateHotspotSize(dz.dataset.id, newPct);
-      });
-      controls.querySelector('.smaller').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!isTeacher) return;
-        const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
-        dz.dataset.sizePct = newPct;
-        positionDropzone(dz);
-        await updateHotspotSize(dz.dataset.id, newPct);
-      });
-
-      imgWrap.appendChild(dz);
-      dzEls.push(dz);
-      positionDropzone(dz);
-    }
-
-    function positionDropzone(dz) {
-      const { w } = imgDims();
-      const x = parseFloat(dz.dataset.xPct) * w;
-      const y = parseFloat(dz.dataset.yPct) * bgImg.getBoundingClientRect().height;
-      const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w; // size relative to image width
-      dz.style.left = `${x}px`;
-      dz.style.top = `${y}px`;
-      dz.style.width = `${sz}px`;
-      dz.style.height = `${sz}px`;
-    }
-
-    function positionAllDropzones() {
-      dzEls.forEach(positionDropzone);
-    }
-
-    // Teacher: click to add hotspot at the clicked position (percent coords)
-    const DEFAULT_SIZE_PCT = 0.12; // ~12% of image width
+    // ====== TEACHER CLICK TO ADD ======
+    const DEFAULT_SIZE_PCT = 0.12;
 
     imgWrap.addEventListener('click', async (e) => {
       if (!isTeacher) return;
       if (!selectedLabel) {
-        // gentle nudge so it's obvious why nothing happens
         console.warn('Select a label first, then click the image to place the hotspot.');
         return;
       }
       const rect = bgImg.getBoundingClientRect();
       const xPct = (e.clientX - rect.left) / rect.width;
       const yPct = (e.clientY - rect.top) / rect.height;
-      await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
+      if (xPct < 0 || xPct > 1 || yPct < 0 || yPct > 1) return; // clicked outside the image
+      await createAndSaveHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
     });
 
     // ====== UI WIRES ======
@@ -345,8 +329,7 @@
         clearAnswersBtn.style.display = 'none';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
         imgUploadTrigger.style.display = 'inline-block';
-        // IMPORTANT: render labels for teacher so a label can be selected
-        renderWordBank();
+        renderWordBank(); // ensure labels are visible for teacher
       } else {
         isTeacher = false;
         modeBtn.textContent = 'Enter Teacher Mode';
@@ -364,7 +347,10 @@
       if (!isTeacher) return;
       const zones = Array.from(document.querySelectorAll('.dropzone'));
       for (const dz of zones) {
-        try { await deleteHotspot(dz.dataset.id, dz); } catch (e) { console.warn(e); }
+        try {
+          if (dz.dataset.id?.startsWith('temp-')) { dz.remove(); dzEls = dzEls.filter(x => x !== dz); }
+          else { await deleteHotspot(dz.dataset.id, dz); }
+        } catch (e) { console.warn(e); }
       }
     });
 
@@ -377,7 +363,7 @@
       renderWordBank();
     });
 
-    // ====== LOGIN HANDLERS ======
+    // ====== LOGIN ======
     function reflectLoginUI() {
       if (studentEmail) {
         emailInput.style.display = 'none';
