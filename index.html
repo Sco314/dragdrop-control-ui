@@ -21,9 +21,14 @@
     #imgWrap { position:relative; max-width:100%; max-height:100%; }
     #bgImg { display:block; max-width:100%; height:auto; }
 
-    .dropzone { position:absolute; border:2px solid #000; border-radius:50%; width:100px; height:100px; transform:translate(-50%, -50%); display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(255,255,255,.0); pointer-events:auto; }
+    .dropzone {
+      position:absolute; border:2px solid #000; border-radius:50%;
+      width:100px; height:100px; transform:translate(-50%, -50%);
+      display:flex; align-items:center; justify-content:center; font-weight:700;
+      background:rgba(255,255,255,0); pointer-events:auto; z-index:2;
+    }
     .dropzone.filled { border-color: #1a7f37; }
-    .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; }
+    .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; z-index:3; }
     .dropzone.teacher .controls { display:flex; }
 
     .hint { font-size:12px; color:#666; }
@@ -69,8 +74,8 @@
     // ====== CONFIG ======
     const SUPABASE_URL = "https://boaanmcdttdbnkccfkhu.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvYWFubWNkdHRkYm5rY2Nma2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2ODA2MTcsImV4cCI6MjA3MDI1NjYxN30.KW6pAQcYRUZL2dT2n0Vh-5W5DKDO7TPnyzH_VY2NJ2E";
-    const ACTIVITY_ID = "process-control-01"; // change per activity
-    const TEACHER_PASSWORD = "teach123"; // simple gate
+    const ACTIVITY_ID = "process-control-01";
+    const TEACHER_PASSWORD = "teach123";
 
     // ====== DOM ======
     const imgWrap = document.getElementById("imgWrap");
@@ -164,7 +169,8 @@
     async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
       const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
       const row = await sbFetch('/rest/v1/hotspots', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
         body: JSON.stringify(body)
       });
       renderDropzoneFromRow(row[0]);
@@ -298,9 +304,9 @@
     }
 
     function positionDropzone(dz) {
-      const { w, h } = imgDims();
+      const { w } = imgDims();
       const x = parseFloat(dz.dataset.xPct) * w;
-      const y = parseFloat(dz.dataset.yPct) * h;
+      const y = parseFloat(dz.dataset.yPct) * bgImg.getBoundingClientRect().height;
       const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w; // size relative to image width
       dz.style.left = `${x}px`;
       dz.style.top = `${y}px`;
@@ -316,7 +322,12 @@
     const DEFAULT_SIZE_PCT = 0.12; // ~12% of image width
 
     imgWrap.addEventListener('click', async (e) => {
-      if (!isTeacher || !selectedLabel) return;
+      if (!isTeacher) return;
+      if (!selectedLabel) {
+        // gentle nudge so it's obvious why nothing happens
+        console.warn('Select a label first, then click the image to place the hotspot.');
+        return;
+      }
       const rect = bgImg.getBoundingClientRect();
       const xPct = (e.clientX - rect.left) / rect.width;
       const yPct = (e.clientY - rect.top) / rect.height;
@@ -332,9 +343,10 @@
         modeBtn.textContent = 'Switch to Student Mode';
         clearHotspotsBtn.style.display = 'inline-block';
         clearAnswersBtn.style.display = 'none';
-        // show teacher controls on existing zones
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
         imgUploadTrigger.style.display = 'inline-block';
+        // IMPORTANT: render labels for teacher so a label can be selected
+        renderWordBank();
       } else {
         isTeacher = false;
         modeBtn.textContent = 'Enter Teacher Mode';
@@ -342,7 +354,6 @@
         clearAnswersBtn.style.display = 'inline-block';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('teacher'));
         imgUploadTrigger.style.display = 'none';
-        // reset student state
         attempts = 0; placements = 0; updateScore();
         selectedLabel = null;
         renderWordBank();
@@ -358,7 +369,6 @@
     });
 
     clearAnswersBtn.addEventListener('click', () => {
-      // Student clears placed labels & score
       attempts = 0; placements = 0; updateScore();
       document.querySelectorAll('.dropzone').forEach(dz => {
         dz.classList.remove('filled');
@@ -396,7 +406,6 @@
       studentEmail = '';
       localStorage.removeItem('studentEmail');
       reflectLoginUI();
-      // also clear student-side UI
       clearAnswersBtn.click();
       attemptHistory.innerHTML = '';
     });
@@ -416,7 +425,6 @@
         }
       };
 
-      // wait for image to know size
       if (bgImg.complete) {
         doLoad();
       } else {
@@ -426,12 +434,13 @@
       window.addEventListener('resize', positionAllDropzones);
     }
 
-    // ====== OPTIONAL: Teacher image upload (local preview). For cross-device persistence, wire Supabase Storage.
+    // ====== OPTIONAL: Teacher image upload (local preview)
     const uploadBtn = document.createElement('input');
     uploadBtn.type = 'file';
     uploadBtn.accept = 'image/*';
     uploadBtn.style.display = 'none';
     document.getElementById('toolbar').appendChild(uploadBtn);
+
     const imgUploadTrigger = document.createElement('button');
     imgUploadTrigger.textContent = 'Change Background Image';
     imgUploadTrigger.style.display = 'none';
@@ -444,7 +453,7 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        bgImg.src = reader.result; // session-only; to persist, upload to Supabase Storage and save URL in a table
+        bgImg.src = reader.result;
         dzEls = []; document.querySelectorAll('.dropzone').forEach(el => el.remove());
       };
       reader.readAsDataURL(file);
