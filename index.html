@@ -119,27 +119,50 @@
     let isTeacher = false;                 // starts in student mode
     let attempts = 0, placements = 0;     // scoring
    // Require explicit login each load (don’t auto-log in from localStorage)
-let studentEmail = "";
+// --- login state ---
+// Do NOT auto-login from localStorage. Only show labels after an explicit login click.
+let studentEmail = "";                        // start not logged in
 const savedEmail = localStorage.getItem("studentEmail");
 if (savedEmail) {
-  // just prefill the box so it’s convenient, but still “not logged in”
-  emailInput.value = savedEmail;
+  // convenience only: show it as a placeholder, not as the current value
+  emailInput.placeholder = savedEmail;
+  emailInput.value = "";                      // keep empty so they must click Log in
 }
+
+
 
 
     let dzEls = [];                        // dropzone elements
 
     // ====== HELPERS ======
-    function renderWordBank() {
-      wordBank.innerHTML = "";
-      // In STUDENT mode, hide until login; in TEACHER mode always show.
-      if (!isTeacher && !studentEmail) {
-        const note = document.createElement('div');
-        note.className = 'hint';
-        note.textContent = 'Log in with your email to begin.';
-        wordBank.appendChild(note);
-        return;
-      }
+function renderWordBank() {
+  wordBank.innerHTML = "";
+
+  const requireLogin = !isTeacher && (!studentEmail || !studentEmail.includes("@"));
+  if (requireLogin) {
+    const note = document.createElement("div");
+    note.className = "hint";
+    note.textContent = "Log in with your email to begin.";
+    wordBank.appendChild(note);
+    return;
+  }
+
+  // render labels
+  labels.forEach(text => {
+    const div = document.createElement("div");
+    div.className = "label";
+    div.textContent = text;
+    div.addEventListener("click", () => {
+      if (div.classList.contains("used")) return;
+      selectedLabel = div;
+      document.querySelectorAll(".label").forEach(l => l.style.border = "2px solid #000");
+      div.style.border = "2px solid #2563eb";
+    });
+    wordBank.appendChild(div);
+  });
+}
+
+
       labels.forEach(text => {
         const div = document.createElement('div');
         div.className = 'label';
