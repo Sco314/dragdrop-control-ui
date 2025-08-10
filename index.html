@@ -38,16 +38,22 @@
       background:transparent;
       user-select:none;
     }
-    /* centered label text (teacher places text center on hotspot center) */
-    .dropzone .label-text{
-      position:absolute; left:50%; top:50%;
-      transform:translate(-50%, -50%);
-      font-weight:700;
-      white-space:nowrap; /* don’t split words; text may extend outside the circle */
-      line-height:1.1;
-      pointer-events:none; /* clicks go to the hotspot, not the text */
-    }
+   /* hide text by default */
+.dropzone .label-text{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%, -50%);
+  font-weight:700;
+  white-space:nowrap;
+  line-height:1.1;
+  pointer-events:none;
+  display:none;              /* <— hide for students until correct */
+}
 
+/* show text when teacher mode is on */
+.dropzone.teacher .label-text { display:block; }
+
+/* show text after a correct student placement */
+.dropzone.filled .label-text { display:block; }
     /* teacher-only control bubble */
     .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; z-index:3; }
     .dropzone.teacher .controls { display:flex; }
@@ -474,3 +480,5 @@
   </script>
 </body>
 </html>
+
+
