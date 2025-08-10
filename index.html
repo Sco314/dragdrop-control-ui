@@ -118,7 +118,15 @@
     let selectedLabel = null;
     let isTeacher = false;                 // starts in student mode
     let attempts = 0, placements = 0;     // scoring
-    let studentEmail = localStorage.getItem("studentEmail") || "";
+   // Require explicit login each load (don’t auto-log in from localStorage)
+let studentEmail = "";
+const savedEmail = localStorage.getItem("studentEmail");
+if (savedEmail) {
+  // just prefill the box so it’s convenient, but still “not logged in”
+  emailInput.value = savedEmail;
+}
+
+
     let dzEls = [];                        // dropzone elements
 
     // ====== HELPERS ======
@@ -477,3 +485,4 @@
   </script>
 </body>
 </html>
+
