@@ -39,19 +39,21 @@
       user-select:none;
     }
 
-    /* hide text by default (students) */
+    /* hide text by default for students */
     .dropzone .label-text{
       position:absolute; left:50%; top:50%;
       transform:translate(-50%, -50%);
       font-weight:700;
-      white-space:nowrap;
+      white-space:nowrap;        /* don’t split words; may extend outside circle */
       line-height:1.1;
-      pointer-events:none;
-      display:none;
+      pointer-events:none;       /* clicks go to hotspot */
+      display:none;              /* hidden until teacher mode or correct */
+      text-align:center;
     }
-    /* teacher sees text; students see it after correct placement */
+    /* show text when teacher mode is on */
     .dropzone.teacher .label-text { display:block; }
-    .dropzone.filled  .label-text { display:block; }
+    /* show text after a correct student placement */
+    .dropzone.filled .label-text { display:block; }
 
     /* teacher-only control bubble */
     .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; z-index:3; }
@@ -82,10 +84,10 @@
 
     <div id="toolbar">
       <button id="modeBtn">Enter Teacher Mode</button>
-      <button id="changeImgBtn" style="display:none;">Change Image</button>
+      <button id="changeImgBtn" style="display:none;">Change Background Image</button>
+      <input id="imgFile" type="file" accept="image/*" style="display:none;" />
       <button id="clearHotspotsBtn" style="display:none;">Clear All Hotspots</button>
       <button id="clearAnswersBtn" style="display:inline-block;">Clear Answers</button>
-      <input id="fileInput" type="file" accept="image/*" style="display:none;" />
     </div>
 
     <div id="word-bank"></div>
@@ -104,31 +106,19 @@
     const SUPABASE_URL = "https://boaanmcdttdbnkccfkhu.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvYWFubWNkdHRkYm5rY2Nma2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2ODA2MTcsImV4cCI6MjA3MDI1NjYxN30.KW6pAQcYRUZL2dT2n0Vh-5W5DKDO7TPnyzH_VY2NJ2E";
     const ACTIVITY_ID = "process-control-01"; // change per activity
-    const TEACHER_PASSWORD = "teach123"; // simple gate
-
-    // Storage bucket + pathing
-    const STORAGE_BUCKET = "activities"; // create this in Supabase
-    function activityObjectPath(filename) {
-      const ts = Date.now();
-      // keep it organized per activity, prefix with timestamp to avoid collisions
-      return `${ACTIVITY_ID}/${ts}_${filename}`;
-    }
-    function publicImageUrl(objectPath) {
-      // Works if the bucket is public
-      return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${encodeURIComponent(objectPath)}`;
-    }
+    const TEACHER_PASSWORD = "teach123";     // simple gate
 
     // ====== DOM ======
     const imgWrap = document.getElementById("imgWrap");
-    const bgImg   = document.getElementById("bgImg");
-    const wordBank= document.getElementById("word-bank");
+    const bgImg = document.getElementById("bgImg");
+    const wordBank = document.getElementById("word-bank");
     const scoreDisplay = document.getElementById("score");
     const attemptHistory = document.getElementById("attemptHistory");
     const modeBtn = document.getElementById("modeBtn");
     const changeImgBtn = document.getElementById("changeImgBtn");
+    const imgFile = document.getElementById("imgFile");
     const clearHotspotsBtn = document.getElementById("clearHotspotsBtn");
-    const clearAnswersBtn  = document.getElementById("clearAnswersBtn");
-    const fileInput = document.getElementById("fileInput");
+    const clearAnswersBtn = document.getElementById("clearAnswersBtn");
     const emailInput = document.getElementById("emailInput");
     const loginBtn = document.getElementById("loginBtn");
     const logoutBtn = document.getElementById("logoutBtn");
@@ -137,18 +127,13 @@
     // ====== STATE ======
     const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     let selectedLabel = null;
-    let isTeacher = false;                 // starts in student mode
-    let attempts = 0, placements = 0;     // scoring
-
-    // Require explicit login each load (don’t auto-log in from localStorage)
-    let studentEmail = "";
+    let isTeacher = false; // start in student mode
+    let attempts = 0, placements = 0;
+    let studentEmail = ""; // require explicit login
     const savedEmail = localStorage.getItem("studentEmail");
-    if (savedEmail) {
-      emailInput.placeholder = savedEmail;
-      emailInput.value = "";
-    }
+    if (savedEmail) emailInput.placeholder = savedEmail;
 
-    let dzEls = [];                        // dropzone elements
+    let dzEls = [];
 
     // ====== HELPERS ======
     function renderWordBank() {
@@ -181,10 +166,10 @@
 
     function imgDims() {
       const r = bgImg.getBoundingClientRect();
-      return { left:r.left, top:r.top, w:r.width, h:r.height };
+      return { left: r.left, top: r.top, w: r.width, h: r.height };
     }
 
-    // ====== Supabase helper (REST) ======
+    // ====== SUPABASE REST ======
     async function sbFetch(path, options = {}) {
       const url = `${SUPABASE_URL}${path}`;
       const headers = Object.assign({
@@ -193,36 +178,49 @@
       }, options.headers || {});
       const res = await fetch(url, { ...options, headers });
       if (!res.ok) {
-        const txt = await res.text();
+        const txt = await res.text().catch(()=> "");
         throw new Error(`${res.status} ${res.statusText}: ${txt}`);
       }
       const ct = res.headers.get('content-type') || '';
-      return ct.includes('application/json') ? res.json() : null;
+      if (ct.includes('application/json')) return res.json();
+      return null;
     }
 
-    // ====== Activities table: load/save image ======
+    // ====== STORAGE (image) ======
+    async function uploadImageToStorage(file) {
+      const objectPath = `${ACTIVITY_ID}/${Date.now()}-${file.name}`;
+      const up = await fetch(`${SUPABASE_URL}/storage/v1/object/activity-images/${encodeURIComponent(objectPath)}`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'x-upsert': 'true',
+          'Content-Type': file.type || 'application/octet-stream'
+        },
+        body: file
+      });
+      if (!up.ok) {
+        const txt = await up.text().catch(()=> "");
+        throw new Error(`Upload failed: ${up.status} ${up.statusText} ${txt}`);
+      }
+      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/activity-images/${encodeURIComponent(objectPath)}`;
+      // remember this image for the activity
+      await sbFetch('/rest/v1/activity_images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation,resolution=merge-duplicates' },
+        body: JSON.stringify([{ activity_id: ACTIVITY_ID, image_url: publicUrl }])
+      });
+      return publicUrl;
+    }
+
     async function loadActivityImage() {
-      // try to read row for this ACTIVITY_ID
-      const rows = await sbFetch(`/rest/v1/activities?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`, { method:'GET' });
-      if (Array.isArray(rows) && rows.length && rows[0].image_url) {
+      const rows = await sbFetch(`/rest/v1/activity_images?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=image_url&limit=1`, { method: 'GET' });
+      if (rows && rows[0]?.image_url) {
         bgImg.src = rows[0].image_url;
       }
     }
-    async function saveActivityImage(objectPath) {
-      const body = [{
-        activity_id: ACTIVITY_ID,
-        image_path: objectPath,
-        image_url: publicImageUrl(objectPath)
-      }];
-      // upsert via POST with Prefer: resolution=merge-duplicates
-      await sbFetch(`/rest/v1/activities`, {
-        method:'POST',
-        headers: { 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
-        body: JSON.stringify(body)
-      });
-    }
 
-    // ====== Hotspots (CRUD, percent-based) ======
+    // ====== HOTSPOTS ======
     async function loadHotspots() {
       const rows = await sbFetch(`/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`, { method:'GET' });
       rows.forEach(renderDropzoneFromRow);
@@ -230,7 +228,7 @@
     }
 
     async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
-      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
+      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct, text_scale: 1 }];
       const row = await sbFetch('/rest/v1/hotspots', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
@@ -238,7 +236,7 @@
       });
       const dz = renderDropzoneFromRow(row[0]);
       positionDropzone(dz);
-      if (isTeacher) dz.classList.add('teacher'); // show controls immediately
+      if (isTeacher) dz.classList.add('teacher');
       return dz;
     }
 
@@ -256,7 +254,6 @@
       });
     }
 
-    // ====== DROPZONES ======
     function renderDropzoneFromRow(row) {
       const dz = document.createElement('div');
       dz.className = 'dropzone';
@@ -265,7 +262,7 @@
       dz.dataset.xPct = row.x_pct ?? 0.5;
       dz.dataset.yPct = row.y_pct ?? 0.5;
       dz.dataset.sizePct = row.size_pct ?? 0.12;
-      dz.dataset.textScale = row.text_scale ?? 1; // persisted field (see SQL)
+      dz.dataset.textScale = row.text_scale ?? 1;
 
       const span = document.createElement('span');
       span.className = 'label-text';
@@ -284,21 +281,16 @@
       `;
       dz.appendChild(controls);
 
-      // Student click = attempt
       dz.addEventListener('click', async (e) => {
-        if (isTeacher) return;
+        if (isTeacher) return;          // teacher uses controls/drag only
         if (!selectedLabel) return;
         attempts++;
         if (selectedLabel.textContent === dz.dataset.correct) {
           placements++;
-          dz.classList.add('filled');   // hides the circle, shows text
+          dz.classList.add('filled');   // hide circle, keep text
           selectedLabel.remove();
           selectedLabel = null;
-
-          if (placements === labels.length) {
-            await recordAttempt();
-            alert('Great job! Your score was saved.');
-          }
+          if (placements === labels.length) { await recordAttempt(); alert('Great job! Your score was saved.'); }
         } else {
           dz.classList.add('flash');
           setTimeout(() => dz.classList.remove('flash'), 5000);
@@ -308,10 +300,8 @@
         updateScore();
       });
 
-      // Teacher controls
       controls.querySelector('.del').addEventListener('click', async (e) => {
-        e.stopPropagation(); if (!isTeacher) return;
-        await deleteHotspot(dz.dataset.id, dz);
+        e.stopPropagation(); if (!isTeacher) return; await deleteHotspot(dz.dataset.id, dz);
       });
       controls.querySelector('.bigger').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
@@ -327,24 +317,23 @@
       });
       controls.querySelector('.tBigger').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        const newScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
-        dz.dataset.textScale = newScale; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { text_scale: newScale });
+        const ns = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
+        dz.dataset.textScale = ns; positionDropzone(dz);
+        await updateHotspot(dz.dataset.id, { text_scale: ns });
       });
       controls.querySelector('.tSmaller').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        const newScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
-        dz.dataset.textScale = newScale; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { text_scale: newScale });
+        const ns = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
+        dz.dataset.textScale = ns; positionDropzone(dz);
+        await updateHotspot(dz.dataset.id, { text_scale: ns });
       });
 
-      // Teacher: drag hotspot
+      // Teacher drag
       let dragging = false, onMove, onUp;
       dz.addEventListener('mousedown', (e) => {
         if (!isTeacher) return;
         if (e.target.closest('.controls')) return;
-        dragging = true;
-        dz.classList.add('dragging');
+        dragging = true; dz.classList.add('dragging');
 
         onMove = (ev) => {
           if (!dragging) return;
@@ -357,8 +346,7 @@
         };
         onUp = async () => {
           if (!dragging) return;
-          dragging = false;
-          dz.classList.remove('dragging');
+          dragging = false; dz.classList.remove('dragging');
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
           await updateHotspot(dz.dataset.id, {
@@ -379,12 +367,13 @@
     function positionDropzone(dz) {
       const { w } = imgDims();
       const x = parseFloat(dz.dataset.xPct) * w;
-      const y = parseFloat(dz.dataset.yPct) * (imgDims().h);
+      const y = parseFloat(dz.dataset.yPct) * (bgImg.getBoundingClientRect().height);
       const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w;
       dz.style.left = `${x}px`;
       dz.style.top  = `${y}px`;
       dz.style.width  = `${sz}px`;
       dz.style.height = `${sz}px`;
+
       const scale = parseFloat(dz.dataset.textScale) || 1;
       const span = dz.querySelector('.label-text');
       if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;
@@ -392,7 +381,7 @@
 
     function positionAllDropzones() { dzEls.forEach(positionDropzone); }
 
-    // ====== Attempts ======
+    // ====== ATTEMPTS ======
     async function recordAttempt() {
       if (!studentEmail) return;
       const body = [{ activity_id: ACTIVITY_ID, student_email: studentEmail, placements, clicks: attempts, result: `${placements} placed / ${attempts} clicks` }];
@@ -413,7 +402,7 @@
       }).join('<hr style="border:none;border-top:1px solid #eee;">');
     }
 
-    // ====== Teacher: create hotspot by clicking image ======
+    // ====== TEACHER CLICK TO CREATE HOTSPOT ======
     const DEFAULT_SIZE_PCT = 0.12;
     imgWrap.addEventListener('click', async (e) => {
       if (!isTeacher || !selectedLabel) return;
@@ -425,57 +414,12 @@
         const dz = await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
         dz.classList.add('teacher');
       } catch (err) {
-        alert('Could not save hotspot (check Supabase policies / keys).');
-      }
-    });
-
-    // ====== Image upload via Supabase Storage ======
-    changeImgBtn.addEventListener('click', () => {
-      if (!isTeacher) return;
-      fileInput.click();
-    });
-
-    fileInput.addEventListener('change', async (e) => {
-      if (!isTeacher) return;
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const objectPath = activityObjectPath(file.name);
-      const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${encodeURIComponent(objectPath)}`;
-
-      try {
-        // upload file
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': file.type
-          },
-          body: file
-        });
-        if (!res.ok) {
-          const t = await res.text();
-          throw new Error(t || 'Upload failed');
-        }
-
-        // save metadata to activities table
-        await saveActivityImage(objectPath);
-
-        // swap image in UI
-        bgImg.src = publicImageUrl(objectPath);
-
-        // NOTE: existing hotspots stay; if you want separate hotspots per image,
-        // use different ACTIVITY_IDs (one per lesson/diagram).
-      } catch (err) {
-        alert('Image upload failed. Check storage bucket/policies. See console for details.');
         console.error(err);
-      } finally {
-        fileInput.value = '';
+        alert('Image/hotspot save failed. Check Supabase policies/keys.');
       }
     });
 
-    // ====== UI wires ======
+    // ====== UI WIRES ======
     modeBtn.addEventListener('click', () => {
       if (!isTeacher) {
         const pw = prompt('Enter teacher password:');
@@ -493,9 +437,10 @@
         clearHotspotsBtn.style.display = 'none';
         clearAnswersBtn.style.display = 'inline-block';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('teacher'));
-        attempts = 0; placements = 0; updateScore(); selectedLabel = null;
+        attempts = 0; placements = 0; updateScore();
+        selectedLabel = null;
       }
-      renderWordBank(); // teacher always sees labels
+      renderWordBank();
     });
 
     clearHotspotsBtn.addEventListener('click', async () => {
@@ -506,10 +451,30 @@
 
     clearAnswersBtn.addEventListener('click', () => {
       attempts = 0; placements = 0; updateScore();
-      document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('filled'));
+      document.querySelectorAll('.dropzone').forEach(dz => { dz.classList.remove('filled'); });
       renderWordBank();
     });
 
+    // Change background image (teacher)
+    changeImgBtn.addEventListener('click', () => imgFile.click());
+    imgFile.addEventListener('change', async (e) => {
+      if (!isTeacher) return;
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const url = await uploadImageToStorage(file);
+        bgImg.src = url;
+        // If you consider this a new “version” of the activity, you might clear hotspots:
+        // dzEls = []; document.querySelectorAll('.dropzone').forEach(el => el.remove());
+      } catch (err) {
+        console.error(err);
+        alert('Image upload failed. Check storage bucket/policies. See console for details.');
+      } finally {
+        imgFile.value = '';
+      }
+    });
+
+    // ====== LOGIN ======
     function reflectLoginUI() {
       if (studentEmail) {
         emailInput.style.display = 'none';
@@ -546,13 +511,15 @@
     async function init() {
       reflectLoginUI();
       updateScore();
-
-      // Load activity image (if saved)
-      try { await loadActivityImage(); } catch(e){ console.warn('No activity image row yet.'); }
-
       const doLoad = async () => {
-        try { await loadHotspots(); positionAllDropzones(); }
-        catch (err) { console.error('Load failed', err); alert('Could not load hotspots.'); }
+        try {
+          await loadActivityImage();         // load saved background image (if any)
+          await loadHotspots();              // then hotspots
+          positionAllDropzones();
+        } catch (err) {
+          console.error('Init failed', err);
+          alert('Could not load image/hotspots. Check Supabase policies and network.');
+        }
       };
       if (bgImg.complete) doLoad();
       else bgImg.addEventListener('load', doLoad, { once:true });
