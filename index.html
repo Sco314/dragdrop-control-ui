@@ -52,11 +52,39 @@
     .dropzone.teacher { cursor: move; }
     .dropzone.teacher.dragging { opacity:.7; }
 
-    /* Teacher controls bubble */
-    .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:6px; z-index:3; }
-    .controls button { padding:4px 6px; }
-    .dropzone.teacher .controls { display:flex; }
+   /* teacher-only control bubble (compact) */
+.controls{
+  display:none;
+  position:absolute;
+  bottom:110%;
+  left:50%;
+  transform:translateX(-50%);
+  background:#fff;
+  border:1px solid #ccc;
+  border-radius:6px;
+  padding:6px 8px;
+  z-index:3;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+.dropzone.teacher .controls{ display:flex; gap:10px; align-items:flex-start; }
 
+.controls .ctrl-delete button{
+  padding:4px 6px; font-size:12px; line-height:1; border:1px solid #ddd; background:#fff; border-radius:4px; cursor:pointer;
+}
+.controls .ctrl-group{
+  display:flex; flex-direction:column; align-items:center; gap:4px; min-width:60px;
+}
+.controls .ctrl-title{
+  font-size:11px; font-weight:600; color:#333;
+}
+.controls .ctrl-buttons{
+  display:flex; gap:6px;
+}
+.controls .ctrl-buttons button{
+  width:26px; height:24px; padding:0;
+  border:1px solid #ddd; background:#fff; border-radius:4px; font-size:14px; line-height:1; cursor:pointer;
+}
+.controls .ctrl-buttons button:active{ transform:translateY(1px); }
     /* Labels management list */
     .lblItem { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed #eee; }
     .lblItem span { font-size:14px; }
@@ -332,58 +360,88 @@
       span.textContent = row.label;
       dz.appendChild(span);
 
-      const controls = document.createElement('div');
-      controls.className = 'controls';
-      controls.innerHTML = `
-        <button class="del">Delete</button>
-        <button class="bigger">Hotspot +</button>
-        <button class="smaller">Hotspot -</button>
-        <span style="width:8px"></span>
-        <button class="tBigger">Text +</button>
-        <button class="tSmaller">Text -</button>
-      `;
-      dz.appendChild(controls);
+// ----- compact teacher controls -----
+const controls = document.createElement('div');
+controls.className = 'controls';
+controls.innerHTML = `
+  <div class="ctrl-delete">
+    <button class="del" title="Delete">🗑</button>
+  </div>
+  <div class="ctrl-group">
+    <div class="ctrl-title">Hotspot</div>
+    <div class="ctrl-buttons">
+      <button class="hsMinus" aria-label="Hotspot smaller">−</button>
+      <button class="hsPlus"  aria-label="Hotspot larger">+</button>
+    </div>
+  </div>
+  <div class="ctrl-group">
+    <div class="ctrl-title">Text</div>
+    <div class="ctrl-buttons">
+      <button class="txMinus" aria-label="Text smaller">−</button>
+      <button class="txPlus"  aria-label="Text larger">+</button>
+    </div>
+  </div>
+`;
+dz.appendChild(controls);
 
-      // Student click (attempt)
-      dz.addEventListener('click', async (e) => {
-        if (isTeacher) return;              // teacher uses buttons / dragging
-        if (!selectedLabel) return;
-        attempts++;
-        if (selectedLabel.textContent === dz.dataset.correct) {
-          placements++; dz.classList.add('filled');      // hide circle, show text
-          selectedLabel.remove(); selectedLabel = null;
-          if (placements === labels.length) {
-            await recordAttempt();
-            alert('Great job! Your score was saved.');
-          }
-        } else {
-          dz.classList.add('flash'); setTimeout(() => dz.classList.remove('flash'), 5000);
-          selectedLabel.style.border = '2px solid #d4a017';
-          setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
-        }
-        updateScore();
-      });
+// ----- Student click (attempt) — keep this behavior the same -----
+dz.addEventListener('click', async (e) => {
+  if (isTeacher) return;              // teacher uses buttons / dragging
+  if (!selectedLabel) return;
 
-      // Teacher: delete
-      controls.querySelector('.del').addEventListener('click', async (e) => {
-        e.stopPropagation(); if (!isTeacher) return;
-        await deleteHotspot(dz.dataset.id, dz);
-      });
+  attempts++;
+  if (selectedLabel.textContent === dz.dataset.correct) {
+    placements++;
+    dz.classList.add('filled');       // hide circle, show text
+    selectedLabel.remove();
+    selectedLabel = null;
 
-      // Teacher: resize circle
-      controls.querySelector('.bigger').addEventListener('click', async (e) => {
-        e.stopPropagation(); if (!isTeacher) return;
-        const newPct = Math.min(1, parseFloat(dz.dataset.sizePct) * 1.2);
-        dz.dataset.sizePct = newPct; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { size_pct: newPct });
-      });
-      controls.querySelector('.smaller').addEventListener('click', async (e) => {
-        e.stopPropagation(); if (!isTeacher) return;
-        const newPct = Math.max(0.02, parseFloat(dz.dataset.sizePct) * 0.8);
-        dz.dataset.sizePct = newPct; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { size_pct: newPct });
-      });
+    if (placements === labels.length) {
+      await recordAttempt();
+      alert('Great job! Your score was saved.');
+    }
+  } else {
+    dz.classList.add('flash');
+    setTimeout(() => dz.classList.remove('flash'), 5000);
+    selectedLabel.style.border = '2px solid #d4a017';
+    setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
+  }
+  updateScore();
+});
 
+// ----- Teacher control listeners (new class names) -----
+controls.querySelector('.del').addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  await deleteHotspot(dz.dataset.id, dz);
+});
+
+controls.querySelector('.hsPlus').addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || DEFAULT_SIZE_PCT) * 1.2);
+  dz.dataset.sizePct = newPct; positionDropzone(dz);
+  await updateHotspot(dz.dataset.id, { size_pct: newPct });
+});
+
+controls.querySelector('.hsMinus').addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || DEFAULT_SIZE_PCT) * 0.8);
+  dz.dataset.sizePct = newPct; positionDropzone(dz);
+  await updateHotspot(dz.dataset.id, { size_pct: newPct });
+});
+
+controls.querySelector('.txPlus').addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  const newScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
+  dz.dataset.textScale = newScale; positionDropzone(dz);
+  await updateHotspot(dz.dataset.id, { text_scale: newScale });
+});
+
+controls.querySelector('.txMinus').addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  const newScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
+  dz.dataset.textScale = newScale; positionDropzone(dz);
+  await updateHotspot(dz.dataset.id, { text_scale: newScale });
+});
       // Teacher: resize text (persist)
       controls.querySelector('.tBigger').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
@@ -610,3 +668,4 @@
   </script>
 </body>
 </html>
+
