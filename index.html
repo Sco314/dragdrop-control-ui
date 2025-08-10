@@ -5,14 +5,14 @@
   <title>Process Control System – Drag & Click</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { --side-w: 320px; }
+    :root { --side-w: 300px; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; height: 100vh; display: flex; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; height: 100vh; display: flex; }
 
     /* Sidebar */
-    #sidebar { width: var(--side-w); background:#f7f7f7; border-right:1px solid #ddd; padding:12px; display:flex; flex-direction:column; gap:12px; }
-    #toolbar button, #labelsPanel button { width:100%; padding:8px 10px; margin:4px 0; cursor:pointer; }
-    #loginArea, #labelsPanel, #imagePanel { border:1px solid #ddd; background:#fff; padding:10px; }
+    #sidebar { width: var(--side-w); background:#f7f7f7; border-right:1px solid #ddd; padding:12px; display:flex; flex-direction:column; gap:10px; }
+    #toolbar button { width:100%; padding:8px 10px; margin:4px 0; cursor:pointer; }
+    #loginArea { border:1px solid #ddd; background:#fff; padding:8px; }
     #word-bank { background:#fff; border:1px solid #ccc; padding:8px; min-height:120px; overflow:auto; }
     .label { display:block; padding:6px 10px; margin:6px 0; border:2px solid #000; background:#fff; cursor:pointer; user-select:none; }
     .label.used { opacity:.6; cursor:default; }
@@ -30,68 +30,54 @@
     /* Hotspots */
     .dropzone {
       position:absolute;
-      border:2px solid #000; border-radius:50%;
+      border:2px solid #000;
+      border-radius:50%;
       width:100px; height:100px;
       transform:translate(-50%, -50%);
       display:flex; align-items:center; justify-content:center;
-      background:transparent; user-select:none;
+      background:transparent;
+      user-select:none;
     }
-    /* centered label text, hidden by default (students) */
+
+    /* label text sits centered on the hotspot center */
     .dropzone .label-text{
-      position:absolute; left:50%; top:50%; transform:translate(-50%, -50%);
-      font-weight:700; white-space:nowrap; line-height:1.1; pointer-events:none;
-      display:none;
+      position:absolute; left:50%; top:50%;
+      transform:translate(-50%, -50%);
+      font-weight:700;
+      white-space:nowrap;     /* don’t split inside words; may overflow circle */
+      line-height:1.1;
+      pointer-events:none;    /* clicks go to hotspot */
+      display:none;           /* hidden for students until correct */
     }
-    /* Show text in teacher mode and after student is correct */
-    .dropzone.teacher .label-text { display:block; }
-    .dropzone.filled .label-text { display:block; }
-    /* Student correctness visuals */
-    .dropzone.filled { border-color: transparent; }
-    .dropzone.flash  { border-color:#dc2626 !important; }
-    /* Drag affordance in teacher mode */
+    .dropzone.teacher .label-text { display:block; }   /* show in teacher mode */
+    .dropzone.filled  .label-text { display:block; }   /* show after correct */
+
+    /* student correctness */
+    .dropzone.filled { border-color: transparent; }     /* hide circle after correct */
+    .dropzone.flash  { border-color:#dc2626 !important; }/* wrong attempt flash red */
+
+    /* drag cursor in teacher mode */
     .dropzone.teacher { cursor: move; }
     .dropzone.teacher.dragging { opacity:.7; }
 
-   /* teacher-only control bubble (compact) */
-.controls{
-  display:none;
-  position:absolute;
-  bottom:110%;
-  left:50%;
-  transform:translateX(-50%);
-  background:#fff;
-  border:1px solid #ccc;
-  border-radius:6px;
-  padding:6px 8px;
-  z-index:3;
-  box-shadow:0 2px 8px rgba(0,0,0,.12);
-}
-.dropzone.teacher .controls{ display:flex; gap:10px; align-items:flex-start; }
+    /* Compact teacher controls */
+    .controls {
+      display:none;
+      position:absolute; bottom:110%; left:50%; transform:translateX(-50%);
+      background:#fff; border:1px solid #ccc; border-radius:6px;
+      padding:6px; gap:8px; z-index:3;
+      box-shadow:0 2px 8px rgba(0,0,0,.08);
+    }
+    .dropzone.teacher .controls { display:flex; }
 
-.controls .ctrl-delete button{
-  padding:4px 6px; font-size:12px; line-height:1; border:1px solid #ddd; background:#fff; border-radius:4px; cursor:pointer;
-}
-.controls .ctrl-group{
-  display:flex; flex-direction:column; align-items:center; gap:4px; min-width:60px;
-}
-.controls .ctrl-title{
-  font-size:11px; font-weight:600; color:#333;
-}
-.controls .ctrl-buttons{
-  display:flex; gap:6px;
-}
-.controls .ctrl-buttons button{
-  width:26px; height:24px; padding:0;
-  border:1px solid #ddd; background:#fff; border-radius:4px; font-size:14px; line-height:1; cursor:pointer;
-}
-.controls .ctrl-buttons button:active{ transform:translateY(1px); }
-    /* Labels management list */
-    .lblItem { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed #eee; }
-    .lblItem span { font-size:14px; }
-    .lblItem button { width:auto; padding:4px 6px; }
-    #labelList { max-height:160px; overflow:auto; border:1px solid #eee; padding:6px; background:#fafafa; }
-
-    .small { font-size:12px; color:#666; }
+    .control-group { display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .control-group .label { font-size:11px; color:#555; }
+    .control-group .row { display:flex; gap:4px; }
+    .controls button {
+      border:1px solid #ccc; background:#f8f8f8; border-radius:4px;
+      padding:2px 8px; font-size:13px; line-height:1.2; cursor:pointer;
+    }
+    .controls .del { background:#fee2e2; border-color:#fca5a5; }
   </style>
 </head>
 <body>
@@ -112,22 +98,7 @@
       <button id="modeBtn">Enter Teacher Mode</button>
       <button id="clearHotspotsBtn" style="display:none;">Clear All Hotspots</button>
       <button id="clearAnswersBtn" style="display:inline-block;">Clear Answers</button>
-    </div>
-
-    <div id="imagePanel" style="display:none;">
-      <div style="font-weight:700; margin-bottom:6px;">Activity Image</div>
-      <button id="changeImgBtn">Change Image</button>
-      <input id="imgFileInput" type="file" accept="image/*" style="display:none;" />
-      <div class="small">Current activity: <span id="activityIdLabel"></span></div>
-    </div>
-
-    <div id="labelsPanel" style="display:none;">
-      <div style="font-weight:700; margin-bottom:6px;">Manage Labels</div>
-      <div id="labelList"></div>
-      <textarea id="labelsInput" rows="4" placeholder="Add labels: one per line or comma‑separated"></textarea>
-      <button id="addLabelsBtn">Add Labels</button>
-      <button id="clearLabelsBtn" style="background:#fef2f2; border:1px solid #fecaca;">Remove All Labels</button>
-      <div class="small">Labels are tied to this activity.</div>
+      <!-- (optional future) <button id="copyActivityBtn" style="display:none;">Copy Activity</button> -->
     </div>
 
     <div id="word-bank"></div>
@@ -137,17 +108,17 @@
 
   <main id="stage" aria-label="Activity stage">
     <div id="imgWrap">
-      <img id="bgImg" alt="Activity diagram" />
+      <!-- Fallback image if no image_url in activities -->
+      <img id="bgImg" alt="Activity diagram" src="Process_Control_System_label_valve_liquid_level_sensor_controller.png" />
     </div>
   </main>
 
   <script>
-    // ====== CONFIG (EDIT THESE) ======
+    // ====== CONFIG ======
     const SUPABASE_URL = "https://boaanmcdttdbnkccfkhu.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvYWFubWNkdHRkYm5rY2Nma2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2ODA2MTcsImV4cCI6MjA3MDI1NjYxN30.KW6pAQcYRUZL2dT2n0Vh-5W5DKDO7TPnyzH_VY2NJ2E";
     const ACTIVITY_ID = "process-control-01";
     const TEACHER_PASSWORD = "teach123";
-    const BUCKET = "activity-images";
 
     // ====== DOM ======
     const imgWrap = document.getElementById("imgWrap");
@@ -162,30 +133,18 @@
     const loginBtn = document.getElementById("loginBtn");
     const logoutBtn = document.getElementById("logoutBtn");
     const loggedAs = document.getElementById("loggedAs");
-
-    // Teacher panels
-    const labelsPanel = document.getElementById("labelsPanel");
-    const labelList = document.getElementById("labelList");
-    const labelsInput = document.getElementById("labelsInput");
-    const addLabelsBtn = document.getElementById("addLabelsBtn");
-    const clearLabelsBtn = document.getElementById("clearLabelsBtn");
-
-    const imagePanel = document.getElementById("imagePanel");
-    const changeImgBtn = document.getElementById("changeImgBtn");
-    const imgFileInput = document.getElementById("imgFileInput");
-    const activityIdLabel = document.getElementById("activityIdLabel");
+    // const copyActivityBtn = document.getElementById("copyActivityBtn"); // (future)
 
     // ====== STATE ======
-    let labels = [];                 // from DB
+    let labels = [];                 // loaded from DB
     let selectedLabel = null;
     let isTeacher = false;           // starts in student mode
     let attempts = 0, placements = 0;
-    let studentEmail = "";           // explicit login (no auto-login)
+    let studentEmail = "";           // require explicit login
     const savedEmail = localStorage.getItem("studentEmail");
-    if (savedEmail) emailInput.placeholder = savedEmail;
+    if (savedEmail) { emailInput.placeholder = savedEmail; }
 
-    let dzEls = [];                  // dropzones in DOM
-    const DEFAULT_SIZE_PCT = 0.12;
+    let dzEls = [];                  // dropzone nodes
 
     // ====== HELPERS ======
     function updateScore() {
@@ -221,24 +180,6 @@
       });
     }
 
-    function renderLabelManager() {
-      labelList.innerHTML = "";
-      labels.forEach(text => {
-        const row = document.createElement("div");
-        row.className = "lblItem";
-        const sp = document.createElement("span");
-        sp.textContent = text;
-        const del = document.createElement("button");
-        del.textContent = "Delete";
-        del.addEventListener("click", async () => {
-          await sbFetch(`/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&text=eq.${encodeURIComponent(text)}`, { method:'DELETE' });
-          await loadLabels();
-        });
-        row.appendChild(sp); row.appendChild(del);
-        labelList.appendChild(row);
-      });
-    }
-
     // ====== SUPABASE (REST) ======
     async function sbFetch(path, options = {}) {
       const url = `${SUPABASE_URL}${path}`;
@@ -255,93 +196,52 @@
       return ct.includes('application/json') ? res.json() : null;
     }
 
-    async function ensureActivityRow() {
-      // upsert the activity if it doesn't exist
-      await sbFetch('/rest/v1/activities', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
-        body: JSON.stringify([{ id: ACTIVITY_ID, title: ACTIVITY_ID }])
-      });
-    }
-
     async function loadActivityImage() {
-      const rows = await sbFetch(`/rest/v1/activities?id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=image_url`, { method:'GET' });
-      const url = rows && rows[0] && rows[0].image_url;
-      if (url) {
-        bgImg.src = url;
-      } else {
-        // fallback to a local file name if you keep one in repo (optional)
-        bgImg.src = "Process_Control_System_label_valve_liquid_level_sensor_controller.png";
+      // Try to load image_url from activities
+      const rows = await sbFetch(`/rest/v1/activities?id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=image_url`);
+      if (rows && rows[0] && rows[0].image_url) {
+        bgImg.src = rows[0].image_url;
       }
     }
 
     async function loadLabels() {
-      const rows = await sbFetch(`/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=text,ord&order=ord.asc`, { method:'GET' });
-      labels = rows.map(r => r.text);
-      renderWordBank();
-      if (isTeacher) renderLabelManager();
+      const rows = await sbFetch(`/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=text,ord&order=ord.asc`);
+      labels = Array.isArray(rows) && rows.length ? rows.map(r => r.text) : [];
+      // fallback if table empty (optional)
+      if (!labels.length) labels = ["Valve", "Liquid Level Sensor", "Controller"];
     }
 
-    async function addLabelsBulk(raw) {
-      // split by newlines or commas
-      const items = raw.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
-      if (!items.length) return;
-      // compute next ord
-      const current = await sbFetch(`/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=ord&order=ord.desc&limit=1`, { method:'GET' });
-      let startOrd = (current[0]?.ord ?? 0) + 1;
-      const body = items.map((t, i) => ({ activity_id: ACTIVITY_ID, text: t, ord: startOrd + i }));
-      await sbFetch('/rest/v1/labels', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
-      await loadLabels();
-    }
-
-    async function clearLabels() {
-      await sbFetch(`/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}`, { method:'DELETE' });
-      await loadLabels();
-    }
-
-    // Hotspots
     async function loadHotspots() {
-      const rows = await sbFetch(`/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`, { method:'GET' });
+      const rows = await sbFetch(`/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`);
       rows.forEach(renderDropzoneFromRow);
       positionAllDropzones();
     }
 
-    async function createHotspot(label, xPct, yPct, sizePct = DEFAULT_SIZE_PCT) {
-      const body = [{ activity_id: ACTIVITY_ID, label, x_pct:xPct, y_pct:yPct, size_pct:sizePct }];
+    async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
+      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
       const row = await sbFetch('/rest/v1/hotspots', {
-        method:'POST', headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' }, body: JSON.stringify(body)
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
+        body: JSON.stringify(body)
       });
-      const dz = renderDropzoneFromRow(row[0]); positionDropzone(dz);
+      const dz = renderDropzoneFromRow(row[0]);
+      positionDropzone(dz);
       if (isTeacher) dz.classList.add('teacher');
       return dz;
     }
 
-    async function updateHotspot(id, patch) {
-      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, {
-        method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(patch)
-      });
-    }
-
     async function deleteHotspot(id, el) {
       await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, { method:'DELETE' });
-      el.remove(); dzEls = dzEls.filter(x => x !== el);
+      el.remove();
+      dzEls = dzEls.filter(x => x !== el);
     }
 
-    // Attempts
-    async function recordAttempt() {
-      if (!studentEmail) return;
-      const body = [{ activity_id: ACTIVITY_ID, student_email: studentEmail, placements, clicks: attempts, result: `${placements} placed / ${attempts} clicks` }];
-      await sbFetch('/rest/v1/attempts', { method:'POST', headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' }, body: JSON.stringify(body) });
-      refreshAttemptHistory();
-    }
-
-    async function refreshAttemptHistory() {
-      if (!studentEmail) { attemptHistory.innerHTML = ''; return; }
-      const rows = await sbFetch(`/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`, { method:'GET' });
-      attemptHistory.innerHTML = rows.map((r,i) => {
-        const n = rows.length - i;
-        return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
-      }).join('<hr style="border:none;border-top:1px solid #eee;">');
+    async function updateHotspot(id, patch) {
+      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, {
+        method:'PATCH',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(patch)
+      });
     }
 
     // ====== DROPZONES ======
@@ -352,150 +252,97 @@
       dz.dataset.correct = row.label;
       dz.dataset.xPct = row.x_pct ?? 0.5;
       dz.dataset.yPct = row.y_pct ?? 0.5;
-      dz.dataset.sizePct = row.size_pct ?? DEFAULT_SIZE_PCT;
+      dz.dataset.sizePct = row.size_pct ?? 0.12;
       dz.dataset.textScale = row.text_scale ?? 1;
 
+      // centered label text
       const span = document.createElement('span');
       span.className = 'label-text';
       span.textContent = row.label;
       dz.appendChild(span);
 
-// ----- compact teacher controls -----
-const controls = document.createElement('div');
-controls.className = 'controls';
-controls.innerHTML = `
-  <div class="ctrl-delete">
-    <button class="del" title="Delete">🗑</button>
-  </div>
-  <div class="ctrl-group">
-    <div class="ctrl-title">Hotspot</div>
-    <div class="ctrl-buttons">
-      <button class="hsMinus" aria-label="Hotspot smaller">−</button>
-      <button class="hsPlus"  aria-label="Hotspot larger">+</button>
-    </div>
-  </div>
-  <div class="ctrl-group">
-    <div class="ctrl-title">Text</div>
-    <div class="ctrl-buttons">
-      <button class="txMinus" aria-label="Text smaller">−</button>
-      <button class="txPlus"  aria-label="Text larger">+</button>
-    </div>
-  </div>
-`;
-dz.appendChild(controls);
+      // --- build compact control panel ---
+      const controls = document.createElement('div');
+      controls.className = 'controls';
+      controls.innerHTML = `
+        <div class="control-group">
+          <button class="del" title="Delete">×</button>
+        </div>
+        <div class="control-group">
+          <div class="label">Hotspot</div>
+          <div class="row">
+            <button class="hsMinus" title="Smaller">−</button>
+            <button class="hsPlus"  title="Bigger">+</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="label">Text</div>
+          <div class="row">
+            <button class="tMinus" title="Smaller">−</button>
+            <button class="tPlus"  title="Bigger">+</button>
+          </div>
+        </div>
+      `;
+      dz.appendChild(controls);
 
-// --- wire buttons (guard each in case markup changes) ---
-const btnDel     = controls.querySelector('.del');
-const btnHsPlus  = controls.querySelector('.hsPlus');
-const btnHsMinus = controls.querySelector('.hsMinus');
-const btnTPlus   = controls.querySelector('.tPlus');
-const btnTMinus  = controls.querySelector('.tMinus');
+      // --- wire buttons safely from 'controls' (not document) ---
+      const btnDel     = controls.querySelector('.del');
+      const btnHsPlus  = controls.querySelector('.hsPlus');
+      const btnHsMinus = controls.querySelector('.hsMinus');
+      const btnTPlus   = controls.querySelector('.tPlus');
+      const btnTMinus  = controls.querySelector('.tMinus');
 
-if (btnDel) btnDel.addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  await deleteHotspot(dz.dataset.id, dz);
-});
-
-if (btnHsPlus) btnHsPlus.addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
-  dz.dataset.sizePct = newPct; positionDropzone(dz);
-  await updateHotspot(dz.dataset.id, { size_pct: newPct });
-});
-
-if (btnHsMinus) btnHsMinus.addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
-  dz.dataset.sizePct = newPct; positionDropzone(dz);
-  await updateHotspot(dz.dataset.id, { size_pct: newPct });
-});
-
-if (btnTPlus) btnTPlus.addEventListener('click', (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  dz.dataset.textScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
-  positionDropzone(dz);
-});
-
-if (btnTMinus) btnTMinus.addEventListener('click', (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  dz.dataset.textScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
-  positionDropzone(dz);
-});
-
-
-// ----- Student click (attempt) — keep this behavior the same -----
-dz.addEventListener('click', async (e) => {
-  if (isTeacher) return;              // teacher uses buttons / dragging
-  if (!selectedLabel) return;
-
-  attempts++;
-  if (selectedLabel.textContent === dz.dataset.correct) {
-    placements++;
-    dz.classList.add('filled');       // hide circle, show text
-    selectedLabel.remove();
-    selectedLabel = null;
-
-    if (placements === labels.length) {
-      await recordAttempt();
-      alert('Great job! Your score was saved.');
-    }
-  } else {
-    dz.classList.add('flash');
-    setTimeout(() => dz.classList.remove('flash'), 5000);
-    selectedLabel.style.border = '2px solid #d4a017';
-    setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
-  }
-  updateScore();
-});
-
-// ----- Teacher control listeners (new class names) -----
-controls.querySelector('.del').addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  await deleteHotspot(dz.dataset.id, dz);
-});
-
-controls.querySelector('.hsPlus').addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || DEFAULT_SIZE_PCT) * 1.2);
-  dz.dataset.sizePct = newPct; positionDropzone(dz);
-  await updateHotspot(dz.dataset.id, { size_pct: newPct });
-});
-
-controls.querySelector('.hsMinus').addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || DEFAULT_SIZE_PCT) * 0.8);
-  dz.dataset.sizePct = newPct; positionDropzone(dz);
-  await updateHotspot(dz.dataset.id, { size_pct: newPct });
-});
-
-controls.querySelector('.txPlus').addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  const newScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
-  dz.dataset.textScale = newScale; positionDropzone(dz);
-  await updateHotspot(dz.dataset.id, { text_scale: newScale });
-});
-
-controls.querySelector('.txMinus').addEventListener('click', async (e) => {
-  e.stopPropagation(); if (!isTeacher) return;
-  const newScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
-  dz.dataset.textScale = newScale; positionDropzone(dz);
-  await updateHotspot(dz.dataset.id, { text_scale: newScale });
-});
-      // Teacher: resize text (persist)
-      controls.querySelector('.tBigger').addEventListener('click', async (e) => {
+      btnDel && btnDel.addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        const newScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
-        dz.dataset.textScale = newScale; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { text_scale: newScale });
+        await deleteHotspot(dz.dataset.id, dz);
       });
-      controls.querySelector('.tSmaller').addEventListener('click', async (e) => {
+      btnHsPlus && btnHsPlus.addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        const newScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
-        dz.dataset.textScale = newScale; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { text_scale: newScale });
+        const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
+        dz.dataset.sizePct = newPct; positionDropzone(dz);
+        await updateHotspot(dz.dataset.id, { size_pct: newPct });
+      });
+      btnHsMinus && btnHsMinus.addEventListener('click', async (e) => {
+        e.stopPropagation(); if (!isTeacher) return;
+        const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
+        dz.dataset.sizePct = newPct; positionDropzone(dz);
+        await updateHotspot(dz.dataset.id, { size_pct: newPct });
+      });
+      btnTPlus && btnTPlus.addEventListener('click', (e) => {
+        e.stopPropagation(); if (!isTeacher) return;
+        dz.dataset.textScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
+        positionDropzone(dz);
+        // optional: persist a text_scale column if you’ve added it already
+        updateHotspot(dz.dataset.id, { text_scale: parseFloat(dz.dataset.textScale) }).catch(()=>{});
+      });
+      btnTMinus && btnTMinus.addEventListener('click', (e) => {
+        e.stopPropagation(); if (!isTeacher) return;
+        dz.dataset.textScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
+        positionDropzone(dz);
+        updateHotspot(dz.dataset.id, { text_scale: parseFloat(dz.dataset.textScale) }).catch(()=>{});
       });
 
-      // Teacher: drag hotspot
+      // Student click (attempt)
+      dz.addEventListener('click', async (e) => {
+        if (isTeacher) return;              // teacher uses buttons / dragging
+        if (!selectedLabel) return;
+        attempts++;
+        if (selectedLabel.textContent === dz.dataset.correct) {
+          placements++; dz.classList.add('filled');      // hide circle, show text
+          selectedLabel.remove(); selectedLabel = null;
+          if (placements === labels.length) {
+            await recordAttempt();
+            alert('Great job! Your score was saved.');
+          }
+        } else {
+          dz.classList.add('flash'); setTimeout(() => dz.classList.remove('flash'), 5000);
+          selectedLabel.style.border = '2px solid #d4a017';
+          setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
+        }
+        updateScore();
+      });
+
+      // Teacher: drag hotspot to reposition
       let dragging = false, onMove, onUp;
       dz.addEventListener('mousedown', (e) => {
         if (!isTeacher) return;
@@ -516,8 +363,7 @@ controls.querySelector('.txMinus').addEventListener('click', async (e) => {
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
           await updateHotspot(dz.dataset.id, {
-            x_pct: parseFloat(dz.dataset.xPct),
-            y_pct: parseFloat(dz.dataset.yPct)
+            x_pct: parseFloat(dz.dataset.xPct), y_pct: parseFloat(dz.dataset.yPct)
           });
         };
         window.addEventListener('mousemove', onMove);
@@ -531,59 +377,48 @@ controls.querySelector('.txMinus').addEventListener('click', async (e) => {
     }
 
     function positionDropzone(dz) {
-      const { w, h } = imgDims();
+      const { w } = imgDims();
       const x = parseFloat(dz.dataset.xPct) * w;
-      const y = parseFloat(dz.dataset.yPct) * h;
-      const sz = (parseFloat(dz.dataset.sizePct) || DEFAULT_SIZE_PCT) * w;
+      const y = parseFloat(dz.dataset.yPct) * (bgImg.getBoundingClientRect().height);
+      const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w;
       dz.style.left = `${x}px`;
       dz.style.top  = `${y}px`;
       dz.style.width  = `${sz}px`;
       dz.style.height = `${sz}px`;
       const scale = parseFloat(dz.dataset.textScale) || 1;
       const span = dz.querySelector('.label-text');
-      if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;  // baseline ~35% of circle width
+      if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;
     }
 
     function positionAllDropzones() { dzEls.forEach(positionDropzone); }
 
-    // ====== IMAGE UPLOAD (Teacher) ======
-    function publicImageURL(path) {
-      // bucket is public; object public path:
-      return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(path)}`;
+    // ====== ATTEMPTS ======
+    async function recordAttempt() {
+      if (!studentEmail) return;
+      const body = [{ activity_id: ACTIVITY_ID, student_email: studentEmail, placements, clicks: attempts, result: `${placements} placed / ${attempts} clicks` }];
+      await sbFetch('/rest/v1/attempts', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
+        body: JSON.stringify(body)
+      });
+      refreshAttemptHistory();
     }
 
-    changeImgBtn.addEventListener('click', () => imgFileInput.click());
-    imgFileInput.addEventListener('change', async (e) => {
-      if (!isTeacher) return;
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const key = `${ACTIVITY_ID}/${Date.now()}-${file.name}`;
-      try {
-        // Upload to storage
-        await sbFetch(`/storage/v1/object/${BUCKET}/${encodeURIComponent(key)}`, {
-          method:'POST',
-          headers:{ 'Content-Type': file.type },
-          body: file
-        });
-        const url = publicImageURL(key);
-        // Update activities.image_url
-        await sbFetch(`/rest/v1/activities?id=eq.${encodeURIComponent(ACTIVITY_ID)}`, {
-          method:'PATCH', headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ image_url: url })
-        });
-        bgImg.src = url;
-      } catch (err) {
-        console.error(err);
-        alert('Image upload failed. Check storage bucket/policies. See console for details.');
-      } finally {
-        imgFileInput.value = "";
-      }
-    });
+    async function refreshAttemptHistory() {
+      if (!studentEmail) { attemptHistory.innerHTML = ''; return; }
+      const rows = await sbFetch(`/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`);
+      attemptHistory.innerHTML = rows.map((r, i) => {
+        const n = rows.length - i;
+        return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
+      }).join('<hr style="border:none;border-top:1px solid #eee;">');
+    }
 
     // ====== TEACHER CLICK TO CREATE HOTSPOT ======
+    const DEFAULT_SIZE_PCT = 0.12;
+
     imgWrap.addEventListener('click', async (e) => {
       if (!isTeacher || !selectedLabel) return;
-      if (e.target.closest('.dropzone')) return;  // ignore clicks on existing zones
+      if (e.target.closest('.dropzone')) return; // ignore clicks on existing zones
       const rect = bgImg.getBoundingClientRect();
       const xPct = (e.clientX - rect.left) / rect.width;
       const yPct = (e.clientY - rect.top)  / rect.height;
@@ -597,33 +432,27 @@ controls.querySelector('.txMinus').addEventListener('click', async (e) => {
     });
 
     // ====== UI WIRES ======
-    function reflectModeUI() {
-      modeBtn.textContent = isTeacher ? 'Switch to Student Mode' : 'Enter Teacher Mode';
-      clearHotspotsBtn.style.display = isTeacher ? 'inline-block' : 'none';
-      clearAnswersBtn.style.display  = isTeacher ? 'none' : 'inline-block';
-      // teacher-only panels
-      imagePanel.style.display = isTeacher ? 'block' : 'none';
-      labelsPanel.style.display = isTeacher ? 'block' : 'none';
-      // toggle teacher visuals
-      document.querySelectorAll('.dropzone').forEach(dz => {
-        if (isTeacher) dz.classList.add('teacher'); else dz.classList.remove('teacher');
-      });
-      // labels visibility in word bank
-      renderWordBank();
-      if (isTeacher) renderLabelManager();
-    }
-
     modeBtn.addEventListener('click', () => {
       if (!isTeacher) {
         const pw = prompt('Enter teacher password:');
         if (pw !== TEACHER_PASSWORD) { alert('Incorrect password.'); return; }
         isTeacher = true;
+        modeBtn.textContent = 'Switch to Student Mode';
+        clearHotspotsBtn.style.display = 'inline-block';
+        clearAnswersBtn.style.display = 'none';
+        // copyActivityBtn && (copyActivityBtn.style.display = 'inline-block');
+        document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
       } else {
         isTeacher = false;
+        modeBtn.textContent = 'Enter Teacher Mode';
+        clearHotspotsBtn.style.display = 'none';
+        clearAnswersBtn.style.display = 'inline-block';
+        // copyActivityBtn && (copyActivityBtn.style.display = 'none');
+        document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('teacher'));
         attempts = 0; placements = 0; updateScore();
         selectedLabel = null;
       }
-      reflectModeUI();
+      renderWordBank(); // teacher always sees labels
     });
 
     clearHotspotsBtn.addEventListener('click', async () => {
@@ -634,20 +463,8 @@ controls.querySelector('.txMinus').addEventListener('click', async (e) => {
 
     clearAnswersBtn.addEventListener('click', () => {
       attempts = 0; placements = 0; updateScore();
-      document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('filled'));
+      document.querySelectorAll('.dropzone').forEach(dz => { dz.classList.remove('filled'); });
       renderWordBank();
-    });
-
-    // Labels panel buttons
-    addLabelsBtn.addEventListener('click', async () => {
-      const raw = labelsInput.value.trim();
-      if (!raw) return;
-      await addLabelsBulk(raw);
-      labelsInput.value = "";
-    });
-    clearLabelsBtn.addEventListener('click', async () => {
-      if (!confirm('Remove ALL labels for this activity?')) return;
-      await clearLabels();
     });
 
     // ====== LOGIN ======
@@ -685,27 +502,28 @@ controls.querySelector('.txMinus').addEventListener('click', async (e) => {
 
     // ====== INIT ======
     async function init() {
-      activityIdLabel.textContent = ACTIVITY_ID;
+      reflectLoginUI();
       updateScore();
-      reflectLoginUI();          // renders word bank (student must login)
-      reflectModeUI();           // ensure teacher panels hidden by default
-      try {
-        await ensureActivityRow();
-        await loadActivityImage();
-      } catch (e) {
-        console.warn('Could not load activity row/image (will still try to render).', e);
-      }
+
       const doLoad = async () => {
-        try { await loadLabels(); await loadHotspots(); positionAllDropzones(); }
-        catch (err) { console.error('Load failed', err); alert('Could not load data.'); }
+        try {
+          await loadActivityImage(); // pick up image_url if present
+          await loadLabels();
+          renderWordBank();
+          await loadHotspots();
+          positionAllDropzones();
+        } catch (err) {
+          console.error('Load failed', err);
+          alert('Could not load data. Check Supabase tables/policies and network.');
+        }
       };
+
       if (bgImg.complete) doLoad();
       else bgImg.addEventListener('load', doLoad, { once:true });
+
       window.addEventListener('resize', positionAllDropzones);
     }
     init();
   </script>
 </body>
 </html>
-
-
