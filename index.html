@@ -38,14 +38,14 @@
       background:transparent;
       user-select:none;
     }
-    /* text sits centered on the hotspot center */
+    /* centered label text (teacher places text center on hotspot center) */
     .dropzone .label-text{
       position:absolute; left:50%; top:50%;
       transform:translate(-50%, -50%);
       font-weight:700;
-      white-space:nowrap;        /* don’t split words; text may extend outside the circle */
+      white-space:nowrap; /* don’t split words; text may extend outside the circle */
       line-height:1.1;
-      pointer-events:none;       /* clicks go to the hotspot, not the text */
+      pointer-events:none; /* clicks go to the hotspot, not the text */
     }
 
     /* teacher-only control bubble */
@@ -54,7 +54,7 @@
 
     /* student correctness */
     .dropzone.filled { border-color: transparent; }     /* hide circle after correct */
-    .dropzone.flash { border-color:#dc2626 !important; }/* wrong attempt flash red */
+    .dropzone.flash  { border-color:#dc2626 !important; }/* wrong attempt flash red */
 
     /* drag cursor in teacher mode */
     .dropzone.teacher { cursor: move; }
@@ -116,62 +116,39 @@
     // ====== STATE ======
     const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     let selectedLabel = null;
-    let isTeacher = false;                 // starts in student mode
-    let attempts = 0, placements = 0;     // scoring
-   // Require explicit login each load (don’t auto-log in from localStorage)
-// --- login state ---
-// Do NOT auto-login from localStorage. Only show labels after an explicit login click.
-let studentEmail = "";                        // start not logged in
-const savedEmail = localStorage.getItem("studentEmail");
-if (savedEmail) {
-  // convenience only: show it as a placeholder, not as the current value
-  emailInput.placeholder = savedEmail;
-  emailInput.value = "";                      // keep empty so they must click Log in
-}
+    let isTeacher = false;                 // start in student mode
+    let attempts = 0, placements = 0;
 
-
-
+    // Require explicit login each load (don’t auto-login from localStorage)
+    let studentEmail = "";
+    const savedEmail = localStorage.getItem("studentEmail");
+    if (savedEmail) {
+      emailInput.placeholder = savedEmail; // convenience only
+      emailInput.value = "";
+    }
 
     let dzEls = [];                        // dropzone elements
 
     // ====== HELPERS ======
-function renderWordBank() {
-  wordBank.innerHTML = "";
-
-  const requireLogin = !isTeacher && (!studentEmail || !studentEmail.includes("@"));
-  if (requireLogin) {
-    const note = document.createElement("div");
-    note.className = "hint";
-    note.textContent = "Log in with your email to begin.";
-    wordBank.appendChild(note);
-    return;
-  }
-
-  // render labels
-  labels.forEach(text => {
-    const div = document.createElement("div");
-    div.className = "label";
-    div.textContent = text;
-    div.addEventListener("click", () => {
-      if (div.classList.contains("used")) return;
-      selectedLabel = div;
-      document.querySelectorAll(".label").forEach(l => l.style.border = "2px solid #000");
-      div.style.border = "2px solid #2563eb";
-    });
-    wordBank.appendChild(div);
-  });
-}
-
-
+    function renderWordBank() {
+      wordBank.innerHTML = "";
+      const requireLogin = !isTeacher && (!studentEmail || !studentEmail.includes("@"));
+      if (requireLogin) {
+        const note = document.createElement("div");
+        note.className = "hint";
+        note.textContent = "Log in with your email to begin.";
+        wordBank.appendChild(note);
+        return;
+      }
       labels.forEach(text => {
-        const div = document.createElement('div');
-        div.className = 'label';
+        const div = document.createElement("div");
+        div.className = "label";
         div.textContent = text;
-        div.addEventListener('click', () => {
-          if (div.classList.contains('used')) return;
+        div.addEventListener("click", () => {
+          if (div.classList.contains("used")) return;
           selectedLabel = div;
-          document.querySelectorAll('.label').forEach(l => l.style.border = '2px solid #000');
-          div.style.border = '2px solid #2563eb';
+          document.querySelectorAll(".label").forEach(l => l.style.border = "2px solid #000");
+          div.style.border = "2px solid #2563eb";
         });
         wordBank.appendChild(div);
       });
@@ -217,8 +194,7 @@ function renderWordBank() {
       });
       const dz = renderDropzoneFromRow(row[0]);
       positionDropzone(dz);
-      // auto-open teacher controls right after creation
-      if (isTeacher) dz.classList.add('teacher');
+      if (isTeacher) dz.classList.add('teacher'); // show controls immediately
       return dz;
     }
 
@@ -245,7 +221,7 @@ function renderWordBank() {
       dz.dataset.xPct = row.x_pct ?? 0.5;
       dz.dataset.yPct = row.y_pct ?? 0.5;
       dz.dataset.sizePct = row.size_pct ?? 0.12;
-      dz.dataset.textScale = row.text_scale ?? 1; // not persisted yet; harmless
+      dz.dataset.textScale = row.text_scale ?? 1; // not persisted yet
 
       // center-anchored label text
       const span = document.createElement('span');
@@ -268,17 +244,15 @@ function renderWordBank() {
 
       // student click = attempt
       dz.addEventListener('click', async (e) => {
-        if (isTeacher) return;  // teacher interacts with buttons / dragging only
+        if (isTeacher) return;  // teacher uses controls/drag
         if (!selectedLabel) return;
 
         attempts++;
         if (selectedLabel.textContent === dz.dataset.correct) {
           placements++;
-          dz.classList.add('filled');             // hides the circle
-          // leave the centered text exactly where teacher set it
+          dz.classList.add('filled'); // hide circle, keep text
           selectedLabel.remove();
           selectedLabel = null;
-
           if (placements === labels.length) {
             await recordAttempt();
             alert('Great job! Your score was saved.');
@@ -286,7 +260,6 @@ function renderWordBank() {
         } else {
           dz.classList.add('flash');
           setTimeout(() => dz.classList.remove('flash'), 5000);
-          // optional: also tint the chosen label border temporarily
           selectedLabel.style.border = '2px solid #d4a017';
           setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
         }
@@ -313,7 +286,7 @@ function renderWordBank() {
         await updateHotspot(dz.dataset.id, { size_pct: newPct });
       });
 
-      // teacher: resize text (local persistence for now)
+      // teacher: resize text (local only for now)
       controls.querySelector('.tBigger').addEventListener('click', (e) => {
         e.stopPropagation(); if (!isTeacher) return;
         dz.dataset.textScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
@@ -330,7 +303,6 @@ function renderWordBank() {
       let onMove, onUp;
       dz.addEventListener('mousedown', (e) => {
         if (!isTeacher) return;
-        // ignore drags that start on the control buttons
         if (e.target.closest('.controls')) return;
         dragging = true;
         dz.classList.add('dragging');
@@ -350,7 +322,6 @@ function renderWordBank() {
           dz.classList.remove('dragging');
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
-          // save new position
           await updateHotspot(dz.dataset.id, {
             x_pct: parseFloat(dz.dataset.xPct),
             y_pct: parseFloat(dz.dataset.yPct)
@@ -375,7 +346,6 @@ function renderWordBank() {
       dz.style.top  = `${y}px`;
       dz.style.width  = `${sz}px`;
       dz.style.height = `${sz}px`;
-      // text size baseline ~35% of circle width, scaled by textScale
       const scale = parseFloat(dz.dataset.textScale) || 1;
       const span = dz.querySelector('.label-text');
       if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;
@@ -409,13 +379,10 @@ function renderWordBank() {
 
     imgWrap.addEventListener('click', async (e) => {
       if (!isTeacher || !selectedLabel) return;
-      // ignore when clicking an existing hotspot/control
-      if (e.target.closest('.dropzone')) return;
-
+      if (e.target.closest('.dropzone')) return; // ignore clicks on existing
       const rect = bgImg.getBoundingClientRect();
       const xPct = (e.clientX - rect.left) / rect.width;
       const yPct = (e.clientY - rect.top)  / rect.height;
-
       try {
         const dz = await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
         dz.classList.add('teacher'); // show controls immediately
@@ -433,7 +400,6 @@ function renderWordBank() {
         modeBtn.textContent = 'Switch to Student Mode';
         clearHotspotsBtn.style.display = 'inline-block';
         clearAnswersBtn.style.display = 'none';
-        // show teacher controls on existing zones
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
       } else {
         isTeacher = false;
@@ -508,4 +474,3 @@ function renderWordBank() {
   </script>
 </body>
 </html>
-
