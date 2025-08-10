@@ -38,22 +38,21 @@
       background:transparent;
       user-select:none;
     }
-   /* hide text by default */
-.dropzone .label-text{
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%, -50%);
-  font-weight:700;
-  white-space:nowrap;
-  line-height:1.1;
-  pointer-events:none;
-  display:none;              /* <— hide for students until correct */
-}
 
-/* show text when teacher mode is on */
-.dropzone.teacher .label-text { display:block; }
+    /* hide text by default (students) */
+    .dropzone .label-text{
+      position:absolute; left:50%; top:50%;
+      transform:translate(-50%, -50%);
+      font-weight:700;
+      white-space:nowrap;      /* do not split words; text can extend past circle */
+      line-height:1.1;
+      pointer-events:none;
+      display:none;            /* hidden until teacher or correct */
+    }
+    /* show text for teacher, and after a correct placement */
+    .dropzone.teacher .label-text { display:block; }
+    .dropzone.filled  .label-text { display:block; }
 
-/* show text after a correct student placement */
-.dropzone.filled .label-text { display:block; }
     /* teacher-only control bubble */
     .controls { display:none; position:absolute; bottom:110%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; border-radius:4px; padding:4px; gap:4px; z-index:3; }
     .dropzone.teacher .controls { display:flex; }
@@ -122,22 +121,18 @@
     // ====== STATE ======
     const labels = ["Valve", "Liquid Level Sensor", "Controller"];
     let selectedLabel = null;
-    let isTeacher = false;                 // start in student mode
-    let attempts = 0, placements = 0;
-
-    // Require explicit login each load (don’t auto-login from localStorage)
-    let studentEmail = "";
+    let isTeacher = false;                 // starts in student mode
+    let attempts = 0, placements = 0;     // scoring
+    let studentEmail = "";                // require explicit login each load
     const savedEmail = localStorage.getItem("studentEmail");
-    if (savedEmail) {
-      emailInput.placeholder = savedEmail; // convenience only
-      emailInput.value = "";
-    }
+    if (savedEmail) { emailInput.placeholder = savedEmail; }
 
     let dzEls = [];                        // dropzone elements
 
     // ====== HELPERS ======
     function renderWordBank() {
       wordBank.innerHTML = "";
+      // Students must be logged in; teachers see labels immediately
       const requireLogin = !isTeacher && (!studentEmail || !studentEmail.includes("@"));
       if (requireLogin) {
         const note = document.createElement("div");
@@ -192,7 +187,7 @@
     }
 
     async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
-      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
+      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct, text_scale: 1 }];
       const row = await sbFetch('/rest/v1/hotspots', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
@@ -227,7 +222,7 @@
       dz.dataset.xPct = row.x_pct ?? 0.5;
       dz.dataset.yPct = row.y_pct ?? 0.5;
       dz.dataset.sizePct = row.size_pct ?? 0.12;
-      dz.dataset.textScale = row.text_scale ?? 1; // not persisted yet
+      dz.dataset.textScale = row.text_scale ?? 1;
 
       // center-anchored label text
       const span = document.createElement('span');
@@ -250,15 +245,16 @@
 
       // student click = attempt
       dz.addEventListener('click', async (e) => {
-        if (isTeacher) return;  // teacher uses controls/drag
+        if (isTeacher) return;  // teacher interacts with buttons / dragging only
         if (!selectedLabel) return;
 
         attempts++;
         if (selectedLabel.textContent === dz.dataset.correct) {
           placements++;
-          dz.classList.add('filled'); // hide circle, keep text
+          dz.classList.add('filled');        // hides the circle; text remains
           selectedLabel.remove();
           selectedLabel = null;
+
           if (placements === labels.length) {
             await recordAttempt();
             alert('Great job! Your score was saved.');
@@ -281,27 +277,31 @@
       // teacher: resize circle
       controls.querySelector('.bigger').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        const newPct = Math.min(1, parseFloat(dz.dataset.sizePct) * 1.2);
+        const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
         dz.dataset.sizePct = newPct; positionDropzone(dz);
         await updateHotspot(dz.dataset.id, { size_pct: newPct });
       });
       controls.querySelector('.smaller').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        const newPct = Math.max(0.02, parseFloat(dz.dataset.sizePct) * 0.8);
+        const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
         dz.dataset.sizePct = newPct; positionDropzone(dz);
         await updateHotspot(dz.dataset.id, { size_pct: newPct });
       });
 
-      // teacher: resize text (local only for now)
-      controls.querySelector('.tBigger').addEventListener('click', (e) => {
+      // teacher: resize text (persist text_scale)
+      controls.querySelector('.tBigger').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        dz.dataset.textScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
+        const newScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
+        dz.dataset.textScale = newScale;
         positionDropzone(dz);
+        await updateHotspot(dz.dataset.id, { text_scale: newScale });
       });
-      controls.querySelector('.tSmaller').addEventListener('click', (e) => {
+      controls.querySelector('.tSmaller').addEventListener('click', async (e) => {
         e.stopPropagation(); if (!isTeacher) return;
-        dz.dataset.textScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
+        const newScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
+        dz.dataset.textScale = newScale;
         positionDropzone(dz);
+        await updateHotspot(dz.dataset.id, { text_scale: newScale });
       });
 
       // teacher: drag hotspot
@@ -309,7 +309,7 @@
       let onMove, onUp;
       dz.addEventListener('mousedown', (e) => {
         if (!isTeacher) return;
-        if (e.target.closest('.controls')) return;
+        if (e.target.closest('.controls')) return; // don't start drag by clicking a button
         dragging = true;
         dz.classList.add('dragging');
 
@@ -344,14 +344,15 @@
     }
 
     function positionDropzone(dz) {
-      const { w, h } = imgDims();
+      const { w } = imgDims();
       const x = parseFloat(dz.dataset.xPct) * w;
-      const y = parseFloat(dz.dataset.yPct) * h;
+      const y = parseFloat(dz.dataset.yPct) * (bgImg.getBoundingClientRect().height);
       const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w;
       dz.style.left = `${x}px`;
       dz.style.top  = `${y}px`;
       dz.style.width  = `${sz}px`;
       dz.style.height = `${sz}px`;
+      // text size baseline ~35% of circle width, scaled by textScale
       const scale = parseFloat(dz.dataset.textScale) || 1;
       const span = dz.querySelector('.label-text');
       if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;
@@ -385,10 +386,12 @@
 
     imgWrap.addEventListener('click', async (e) => {
       if (!isTeacher || !selectedLabel) return;
-      if (e.target.closest('.dropzone')) return; // ignore clicks on existing
+      if (e.target.closest('.dropzone')) return; // ignore clicks on existing hotspot
+
       const rect = bgImg.getBoundingClientRect();
       const xPct = (e.clientX - rect.left) / rect.width;
       const yPct = (e.clientY - rect.top)  / rect.height;
+
       try {
         const dz = await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
         dz.classList.add('teacher'); // show controls immediately
@@ -416,7 +419,7 @@
         attempts = 0; placements = 0; updateScore();
         selectedLabel = null;
       }
-      renderWordBank(); // teacher always sees labels
+      renderWordBank(); // teacher sees labels immediately; students only after login
     });
 
     clearHotspotsBtn.addEventListener('click', async () => {
@@ -480,5 +483,3 @@
   </script>
 </body>
 </html>
-
-
