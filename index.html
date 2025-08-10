@@ -12,15 +12,15 @@
     /* Sidebar */
     #sidebar { width: var(--side-w); background:#f7f7f7; border-right:1px solid #ddd; padding:12px; display:flex; flex-direction:column; gap:10px; }
     #toolbar button { width:100%; padding:8px 10px; margin:4px 0; cursor:pointer; }
-    #loginArea { border:1px solid #ddd; background:#fff; padding:8px; }
-    #word-bank { background:#fff; border:1px solid #ccc; padding:8px; min-height:120px; overflow:auto; }
+    #loginArea, #labelManager { border:1px solid #ddd; background:#fff; padding:8px; }
+    #word-bank { background:#fff; border:1px solid #ccc; padding:8px; min-height:120px; max-height:28vh; overflow:auto; }
     .label { display:block; padding:6px 10px; margin:6px 0; border:2px solid #000; background:#fff; cursor:pointer; user-select:none; }
     .label.used { opacity:.6; cursor:default; }
     #score { font-weight:600; }
-    #attemptHistory { font-size:13px; border-top:1px solid #ddd; padding-top:8px; max-height:25vh; overflow:auto; }
+    #attemptHistory { font-size:13px; border-top:1px solid #ddd; padding-top:8px; max-height:22vh; overflow:auto; }
     .hint { font-size:12px; color:#666; }
     .row { display:flex; gap:8px; }
-    input[type=email] { width:100%; padding:8px; border:1px solid #bbb; border-radius:4px; }
+    input[type=email], input[type=text], textarea { width:100%; padding:8px; border:1px solid #bbb; border-radius:4px; }
 
     /* Stage */
     #stage { position:relative; flex:1; overflow:auto; background:#fff; display:flex; align-items:center; justify-content:center; }
@@ -39,16 +39,15 @@
       user-select:none;
     }
 
-    /* hide text by default for students */
+    /* hide text by default (students) */
     .dropzone .label-text{
       position:absolute; left:50%; top:50%;
       transform:translate(-50%, -50%);
       font-weight:700;
-      white-space:nowrap;        /* don’t split words; may extend outside circle */
+      white-space:nowrap;
       line-height:1.1;
-      pointer-events:none;       /* clicks go to hotspot */
-      display:none;              /* hidden until teacher mode or correct */
-      text-align:center;
+      pointer-events:none;
+      display:none;
     }
     /* show text when teacher mode is on */
     .dropzone.teacher .label-text { display:block; }
@@ -60,12 +59,17 @@
     .dropzone.teacher .controls { display:flex; }
 
     /* student correctness */
-    .dropzone.filled { border-color: transparent; }     /* hide circle after correct */
-    .dropzone.flash  { border-color:#dc2626 !important; }/* wrong attempt flash red */
+    .dropzone.filled { border-color: transparent; }
+    .dropzone.flash  { border-color:#dc2626 !important; }
 
     /* drag cursor in teacher mode */
     .dropzone.teacher { cursor: move; }
     .dropzone.teacher.dragging { opacity:.7; }
+
+    /* Label manager list */
+    .lm-item { display:flex; align-items:center; gap:8px; margin:4px 0; }
+    .lm-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .lm-item button { padding:4px 6px; }
   </style>
 </head>
 <body>
@@ -84,15 +88,31 @@
 
     <div id="toolbar">
       <button id="modeBtn">Enter Teacher Mode</button>
-      <button id="changeImgBtn" style="display:none;">Change Background Image</button>
-      <input id="imgFile" type="file" accept="image/*" style="display:none;" />
       <button id="clearHotspotsBtn" style="display:none;">Clear All Hotspots</button>
       <button id="clearAnswersBtn" style="display:inline-block;">Clear Answers</button>
+      <button id="changeImageBtn" style="display:none;">Change Image</button>
+      <input id="imageFile" type="file" accept="image/*" style="display:none;">
     </div>
 
     <div id="word-bank"></div>
     <div id="score"></div>
     <div id="attemptHistory"></div>
+
+    <!-- Teacher-only Label Manager -->
+    <div id="labelManager" style="display:none;">
+      <div style="font-weight:700; margin-bottom:6px;">Label Manager</div>
+      <div class="row">
+        <input id="newLabelInput" type="text" placeholder="Add one label (Enter)" />
+        <button id="addLabelBtn">Add</button>
+      </div>
+      <div style="margin-top:6px;">Bulk add (comma or newline separated):</div>
+      <textarea id="bulkLabels" rows="3" placeholder="Valve, Liquid Level Sensor, Controller"></textarea>
+      <div class="row" style="margin-top:6px;">
+        <button id="bulkAddBtn">Add Many</button>
+        <button id="clearAllLabelsBtn" style="background:#fee2e2;">Remove All</button>
+      </div>
+      <div id="labelList" style="margin-top:8px; max-height:18vh; overflow:auto; border-top:1px solid #eee; padding-top:6px;"></div>
+    </div>
   </aside>
 
   <main id="stage" aria-label="Activity stage">
@@ -105,37 +125,164 @@
     // ====== CONFIG ======
     const SUPABASE_URL = "https://boaanmcdttdbnkccfkhu.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvYWFubWNkdHRkYm5rY2Nma2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2ODA2MTcsImV4cCI6MjA3MDI1NjYxN30.KW6pAQcYRUZL2dT2n0Vh-5W5DKDO7TPnyzH_VY2NJ2E";
-    const ACTIVITY_ID = "process-control-01"; // change per activity
-    const TEACHER_PASSWORD = "teach123";     // simple gate
+    const ACTIVITY_ID = "process-control-01";
+    const TEACHER_PASSWORD = "teach123";
+    const BUCKET = "activity-images";
 
     // ====== DOM ======
     const imgWrap = document.getElementById("imgWrap");
-    const bgImg = document.getElementById("bgImg");
-    const wordBank = document.getElementById("word-bank");
+    const bgImg   = document.getElementById("bgImg");
+    const wordBank= document.getElementById("word-bank");
     const scoreDisplay = document.getElementById("score");
     const attemptHistory = document.getElementById("attemptHistory");
     const modeBtn = document.getElementById("modeBtn");
-    const changeImgBtn = document.getElementById("changeImgBtn");
-    const imgFile = document.getElementById("imgFile");
     const clearHotspotsBtn = document.getElementById("clearHotspotsBtn");
-    const clearAnswersBtn = document.getElementById("clearAnswersBtn");
+    const clearAnswersBtn  = document.getElementById("clearAnswersBtn");
+    const changeImageBtn = document.getElementById("changeImageBtn");
+    const imageFile = document.getElementById("imageFile");
+
     const emailInput = document.getElementById("emailInput");
     const loginBtn = document.getElementById("loginBtn");
     const logoutBtn = document.getElementById("logoutBtn");
     const loggedAs = document.getElementById("loggedAs");
 
+    // Label manager DOM
+    const labelManager = document.getElementById("labelManager");
+    const newLabelInput = document.getElementById("newLabelInput");
+    const addLabelBtn = document.getElementById("addLabelBtn");
+    const bulkLabels = document.getElementById("bulkLabels");
+    const bulkAddBtn = document.getElementById("bulkAddBtn");
+    const clearAllLabelsBtn = document.getElementById("clearAllLabelsBtn");
+    const labelList = document.getElementById("labelList");
+
     // ====== STATE ======
-    const labels = ["Valve", "Liquid Level Sensor", "Controller"];
+    let labels = [];            // [{id,text,ord}]
     let selectedLabel = null;
-    let isTeacher = false; // start in student mode
+    let isTeacher = false;      // starts in student mode
     let attempts = 0, placements = 0;
-    let studentEmail = ""; // require explicit login
+
+    // login: require explicit login (don’t auto-use stored email)
+    let studentEmail = "";
     const savedEmail = localStorage.getItem("studentEmail");
-    if (savedEmail) emailInput.placeholder = savedEmail;
+    if (savedEmail) { emailInput.placeholder = savedEmail; }
 
-    let dzEls = [];
+    let dzEls = []; // dropzone elements
 
-    // ====== HELPERS ======
+    // ====== UTIL ======
+    function parseBulk(input) {
+      if (!input) return [];
+      const byNewline = input.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      // If just one line with commas, split by comma
+      if (byNewline.length === 1 && byNewline[0].includes(",")) {
+        return byNewline[0].split(",").map(s => s.trim()).filter(Boolean);
+      }
+      return byNewline;
+    }
+
+    function updateScore(){ scoreDisplay.textContent = `${placements} placed / ${attempts} clicks`; }
+
+    function imgDims() {
+      const r = bgImg.getBoundingClientRect();
+      return { left:r.left, top:r.top, w:r.width, h:r.height };
+    }
+
+    // ====== SUPABASE (REST) ======
+    async function sbFetch(path, options = {}) {
+      const url = `${SUPABASE_URL}${path}`;
+      const headers = Object.assign({
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      }, options.headers || {});
+      const res = await fetch(url, { ...options, headers });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`${res.status} ${res.statusText}: ${txt}`);
+      }
+      const ct = res.headers.get('content-type') || '';
+      return ct.includes('application/json') ? res.json() : null;
+    }
+
+    // ----- labels API -----
+    async function loadLabels() {
+      const qs = `/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*&order=ord.asc`;
+      labels = await sbFetch(qs, { method:'GET' });
+      renderWordBank();
+      renderLabelList();
+    }
+    async function addLabel(text) {
+      const body = [{ activity_id: ACTIVITY_ID, text, ord: (labels[labels.length-1]?.ord || 0) + 1 }];
+      const rows = await sbFetch('/rest/v1/labels', {
+        method:'POST', headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+        body: JSON.stringify(body)
+      });
+      labels.push(rows[0]); renderWordBank(); renderLabelList();
+    }
+    async function addManyLabels(texts) {
+      if (!texts.length) return;
+      let ord = (labels[labels.length-1]?.ord || 0);
+      const body = texts.map(t => ({ activity_id: ACTIVITY_ID, text: t, ord: ++ord }));
+      const rows = await sbFetch('/rest/v1/labels', {
+        method:'POST', headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+        body: JSON.stringify(body)
+      });
+      labels = labels.concat(rows); renderWordBank(); renderLabelList();
+    }
+    async function deleteLabel(id) {
+      await sbFetch(`/rest/v1/labels?id=eq.${id}`, { method:'DELETE' });
+      labels = labels.filter(l => l.id !== id);
+      renderWordBank(); renderLabelList();
+    }
+    async function clearAllLabels() {
+      await sbFetch(`/rest/v1/labels?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}`, { method:'DELETE' });
+      labels = []; renderWordBank(); renderLabelList();
+    }
+
+    // ----- hotspots API (percent-based) -----
+    async function loadHotspots() {
+      const rows = await sbFetch(`/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`, { method:'GET' });
+      rows.forEach(renderDropzoneFromRow);
+      positionAllDropzones();
+    }
+    async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
+      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct }];
+      const row = await sbFetch('/rest/v1/hotspots', {
+        method:'POST', headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
+        body: JSON.stringify(body)
+      });
+      const dz = renderDropzoneFromRow(row[0]); positionDropzone(dz);
+      if (isTeacher) dz.classList.add('teacher');
+      return dz;
+    }
+    async function deleteHotspot(id, el) {
+      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, { method:'DELETE' });
+      el.remove(); dzEls = dzEls.filter(x => x !== el);
+    }
+    async function updateHotspot(id, patch) {
+      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, {
+        method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(patch)
+      });
+    }
+
+    // ----- attempts API -----
+    async function recordAttempt() {
+      if (!studentEmail) return;
+      const body = [{ activity_id: ACTIVITY_ID, student_email: studentEmail, placements, clicks: attempts, result: `${placements} placed / ${attempts} clicks` }];
+      await sbFetch('/rest/v1/attempts', {
+        method:'POST', headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+        body: JSON.stringify(body)
+      });
+      refreshAttemptHistory();
+    }
+    async function refreshAttemptHistory() {
+      if (!studentEmail) { attemptHistory.innerHTML = ''; return; }
+      const rows = await sbFetch(`/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`, { method:'GET' });
+      attemptHistory.innerHTML = rows.map((r, i) => {
+        const n = rows.length - i;
+        return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
+      }).join('<hr style="border:none;border-top:1px solid #eee;">');
+    }
+
+    // ====== RENDER: student word bank ======
     function renderWordBank() {
       wordBank.innerHTML = "";
       const requireLogin = !isTeacher && (!studentEmail || !studentEmail.includes("@"));
@@ -146,114 +293,37 @@
         wordBank.appendChild(note);
         return;
       }
-      labels.forEach(text => {
+      labels.forEach(obj => {
         const div = document.createElement("div");
         div.className = "label";
-        div.textContent = text;
+        div.textContent = obj.text;
+        div.dataset.id = obj.id;
         div.addEventListener("click", () => {
           if (div.classList.contains("used")) return;
           selectedLabel = div;
-          document.querySelectorAll(".label").forEach(l => l.style.border = "2px solid #000");
-          div.style.border = "2px solid #2563eb";
+          document.querySelectorAll('.label').forEach(l => l.style.border = '2px solid #000');
+          div.style.border = '2px solid #2563eb';
         });
         wordBank.appendChild(div);
       });
     }
 
-    function updateScore() {
-      scoreDisplay.textContent = `${placements} placed / ${attempts} clicks`;
-    }
+    // ====== RENDER: teacher label list ======
+    function renderLabelList() {
+      labelList.innerHTML = labels.map(l => `
+        <div class="lm-item">
+          <span title="${l.text}">${l.text}</span>
+          <button data-id="${l.id}" class="lm-del">Remove</button>
+        </div>
+      `).join("") || `<div class="hint">No labels yet.</div>`;
 
-    function imgDims() {
-      const r = bgImg.getBoundingClientRect();
-      return { left: r.left, top: r.top, w: r.width, h: r.height };
-    }
-
-    // ====== SUPABASE REST ======
-    async function sbFetch(path, options = {}) {
-      const url = `${SUPABASE_URL}${path}`;
-      const headers = Object.assign({
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      }, options.headers || {});
-      const res = await fetch(url, { ...options, headers });
-      if (!res.ok) {
-        const txt = await res.text().catch(()=> "");
-        throw new Error(`${res.status} ${res.statusText}: ${txt}`);
-      }
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('application/json')) return res.json();
-      return null;
-    }
-
-    // ====== STORAGE (image) ======
-    async function uploadImageToStorage(file) {
-      const objectPath = `${ACTIVITY_ID}/${Date.now()}-${file.name}`;
-      const up = await fetch(`${SUPABASE_URL}/storage/v1/object/activity-images/${encodeURIComponent(objectPath)}`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'x-upsert': 'true',
-          'Content-Type': file.type || 'application/octet-stream'
-        },
-        body: file
-      });
-      if (!up.ok) {
-        const txt = await up.text().catch(()=> "");
-        throw new Error(`Upload failed: ${up.status} ${up.statusText} ${txt}`);
-      }
-      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/activity-images/${encodeURIComponent(objectPath)}`;
-      // remember this image for the activity
-      await sbFetch('/rest/v1/activity_images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation,resolution=merge-duplicates' },
-        body: JSON.stringify([{ activity_id: ACTIVITY_ID, image_url: publicUrl }])
-      });
-      return publicUrl;
-    }
-
-    async function loadActivityImage() {
-      const rows = await sbFetch(`/rest/v1/activity_images?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=image_url&limit=1`, { method: 'GET' });
-      if (rows && rows[0]?.image_url) {
-        bgImg.src = rows[0].image_url;
-      }
-    }
-
-    // ====== HOTSPOTS ======
-    async function loadHotspots() {
-      const rows = await sbFetch(`/rest/v1/hotspots?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&select=*`, { method:'GET' });
-      rows.forEach(renderDropzoneFromRow);
-      positionAllDropzones();
-    }
-
-    async function createHotspot(label, xPct, yPct, sizePct = 0.12) {
-      const body = [{ activity_id: ACTIVITY_ID, label, x_pct: xPct, y_pct: yPct, size_pct: sizePct, text_scale: 1 }];
-      const row = await sbFetch('/rest/v1/hotspots', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
-        body: JSON.stringify(body)
-      });
-      const dz = renderDropzoneFromRow(row[0]);
-      positionDropzone(dz);
-      if (isTeacher) dz.classList.add('teacher');
-      return dz;
-    }
-
-    async function deleteHotspot(id, el) {
-      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, { method:'DELETE' });
-      el.remove();
-      dzEls = dzEls.filter(x => x !== el);
-    }
-
-    async function updateHotspot(id, patch) {
-      await sbFetch(`/rest/v1/hotspots?id=eq.${id}`, {
-        method:'PATCH',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify(patch)
+      // wire delete buttons
+      labelList.querySelectorAll('.lm-del').forEach(btn => {
+        btn.addEventListener('click', () => deleteLabel(btn.dataset.id).catch(err => alert(err.message)));
       });
     }
 
+    // ====== DROPZONES ======
     function renderDropzoneFromRow(row) {
       const dz = document.createElement('div');
       dz.className = 'dropzone';
@@ -282,18 +352,16 @@
       dz.appendChild(controls);
 
       dz.addEventListener('click', async (e) => {
-        if (isTeacher) return;          // teacher uses controls/drag only
+        if (isTeacher) return;
         if (!selectedLabel) return;
         attempts++;
         if (selectedLabel.textContent === dz.dataset.correct) {
           placements++;
-          dz.classList.add('filled');   // hide circle, keep text
-          selectedLabel.remove();
-          selectedLabel = null;
+          dz.classList.add('filled');     // hides circle, shows text
+          selectedLabel.remove(); selectedLabel = null;
           if (placements === labels.length) { await recordAttempt(); alert('Great job! Your score was saved.'); }
         } else {
-          dz.classList.add('flash');
-          setTimeout(() => dz.classList.remove('flash'), 5000);
+          dz.classList.add('flash'); setTimeout(() => dz.classList.remove('flash'), 5000);
           selectedLabel.style.border = '2px solid #d4a017';
           setTimeout(() => { if (selectedLabel) selectedLabel.style.border = '2px solid #000'; }, 5000);
         }
@@ -315,26 +383,19 @@
         dz.dataset.sizePct = newPct; positionDropzone(dz);
         await updateHotspot(dz.dataset.id, { size_pct: newPct });
       });
-      controls.querySelector('.tBigger').addEventListener('click', async (e) => {
-        e.stopPropagation(); if (!isTeacher) return;
-        const ns = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
-        dz.dataset.textScale = ns; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { text_scale: ns });
+      controls.querySelector('.tBigger').addEventListener('click', (e) => {
+        e.stopPropagation(); if (!isTeacher) return; dz.dataset.textScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2; positionDropzone(dz);
       });
-      controls.querySelector('.tSmaller').addEventListener('click', async (e) => {
-        e.stopPropagation(); if (!isTeacher) return;
-        const ns = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
-        dz.dataset.textScale = ns; positionDropzone(dz);
-        await updateHotspot(dz.dataset.id, { text_scale: ns });
+      controls.querySelector('.tSmaller').addEventListener('click', (e) => {
+        e.stopPropagation(); if (!isTeacher) return; dz.dataset.textScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8); positionDropzone(dz);
       });
 
-      // Teacher drag
-      let dragging = false, onMove, onUp;
+      // teacher drag to move
+      let dragging=false, onMove, onUp;
       dz.addEventListener('mousedown', (e) => {
         if (!isTeacher) return;
         if (e.target.closest('.controls')) return;
         dragging = true; dz.classList.add('dragging');
-
         onMove = (ev) => {
           if (!dragging) return;
           const rect = bgImg.getBoundingClientRect();
@@ -346,13 +407,10 @@
         };
         onUp = async () => {
           if (!dragging) return;
-          dragging = false; dz.classList.remove('dragging');
+          dragging=false; dz.classList.remove('dragging');
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
-          await updateHotspot(dz.dataset.id, {
-            x_pct: parseFloat(dz.dataset.xPct),
-            y_pct: parseFloat(dz.dataset.yPct)
-          });
+          await updateHotspot(dz.dataset.id, { x_pct: parseFloat(dz.dataset.xPct), y_pct: parseFloat(dz.dataset.yPct) });
         };
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
@@ -367,40 +425,14 @@
     function positionDropzone(dz) {
       const { w } = imgDims();
       const x = parseFloat(dz.dataset.xPct) * w;
-      const y = parseFloat(dz.dataset.yPct) * (bgImg.getBoundingClientRect().height);
+      const y = parseFloat(dz.dataset.yPct) * bgImg.getBoundingClientRect().height;
       const sz = (parseFloat(dz.dataset.sizePct) || 0.12) * w;
-      dz.style.left = `${x}px`;
-      dz.style.top  = `${y}px`;
-      dz.style.width  = `${sz}px`;
-      dz.style.height = `${sz}px`;
-
+      dz.style.left = `${x}px`; dz.style.top  = `${y}px`;
+      dz.style.width = `${sz}px`; dz.style.height = `${sz}px`;
       const scale = parseFloat(dz.dataset.textScale) || 1;
-      const span = dz.querySelector('.label-text');
-      if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;
+      const span = dz.querySelector('.label-text'); if (span) span.style.fontSize = `${sz * 0.35 * scale}px`;
     }
-
-    function positionAllDropzones() { dzEls.forEach(positionDropzone); }
-
-    // ====== ATTEMPTS ======
-    async function recordAttempt() {
-      if (!studentEmail) return;
-      const body = [{ activity_id: ACTIVITY_ID, student_email: studentEmail, placements, clicks: attempts, result: `${placements} placed / ${attempts} clicks` }];
-      await sbFetch('/rest/v1/attempts', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Prefer':'return=representation' },
-        body: JSON.stringify(body)
-      });
-      refreshAttemptHistory();
-    }
-
-    async function refreshAttemptHistory() {
-      if (!studentEmail) { attemptHistory.innerHTML = ''; return; }
-      const rows = await sbFetch(`/rest/v1/attempts?activity_id=eq.${encodeURIComponent(ACTIVITY_ID)}&student_email=eq.${encodeURIComponent(studentEmail)}&select=*&order=completed_at.desc&limit=4`, { method:'GET' });
-      attemptHistory.innerHTML = rows.map((r, i) => {
-        const n = rows.length - i;
-        return `<div><strong>Attempt ${n}</strong><br>${r.result}</div>`;
-      }).join('<hr style="border:none;border-top:1px solid #eee;">');
-    }
+    function positionAllDropzones(){ dzEls.forEach(positionDropzone); }
 
     // ====== TEACHER CLICK TO CREATE HOTSPOT ======
     const DEFAULT_SIZE_PCT = 0.12;
@@ -414,8 +446,7 @@
         const dz = await createHotspot(selectedLabel.textContent, xPct, yPct, DEFAULT_SIZE_PCT);
         dz.classList.add('teacher');
       } catch (err) {
-        console.error(err);
-        alert('Image/hotspot save failed. Check Supabase policies/keys.');
+        alert('Could not save hotspot (check Supabase policies / keys).');
       }
     });
 
@@ -426,19 +457,20 @@
         if (pw !== TEACHER_PASSWORD) { alert('Incorrect password.'); return; }
         isTeacher = true;
         modeBtn.textContent = 'Switch to Student Mode';
-        changeImgBtn.style.display = 'inline-block';
         clearHotspotsBtn.style.display = 'inline-block';
         clearAnswersBtn.style.display = 'none';
+        changeImageBtn.style.display = 'inline-block';
+        labelManager.style.display = 'block';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.add('teacher'));
       } else {
         isTeacher = false;
         modeBtn.textContent = 'Enter Teacher Mode';
-        changeImgBtn.style.display = 'none';
         clearHotspotsBtn.style.display = 'none';
         clearAnswersBtn.style.display = 'inline-block';
+        changeImageBtn.style.display = 'none';
+        labelManager.style.display = 'none';
         document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('teacher'));
-        attempts = 0; placements = 0; updateScore();
-        selectedLabel = null;
+        attempts = 0; placements = 0; updateScore(); selectedLabel = null;
       }
       renderWordBank();
     });
@@ -446,31 +478,61 @@
     clearHotspotsBtn.addEventListener('click', async () => {
       if (!isTeacher) return;
       const zones = Array.from(document.querySelectorAll('.dropzone'));
-      for (const dz of zones) { try { await deleteHotspot(dz.dataset.id, dz); } catch(e){ console.warn(e);} }
+      for (const dz of zones) { try { await deleteHotspot(dz.dataset.id, dz); } catch(e){} }
     });
 
     clearAnswersBtn.addEventListener('click', () => {
       attempts = 0; placements = 0; updateScore();
-      document.querySelectorAll('.dropzone').forEach(dz => { dz.classList.remove('filled'); });
+      document.querySelectorAll('.dropzone').forEach(dz => dz.classList.remove('filled'));
       renderWordBank();
     });
 
-    // Change background image (teacher)
-    changeImgBtn.addEventListener('click', () => imgFile.click());
-    imgFile.addEventListener('change', async (e) => {
+    // Label manager events
+    addLabelBtn.addEventListener('click', () => {
+      const t = (newLabelInput.value||"").trim();
+      if (!t) return;
+      addLabel(t).catch(err => alert(err.message));
+      newLabelInput.value = "";
+    });
+    newLabelInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { addLabelBtn.click(); }
+    });
+    bulkAddBtn.addEventListener('click', () => {
+      const texts = parseBulk(bulkLabels.value);
+      bulkLabels.value = "";
+      addManyLabels(texts).catch(err => alert(err.message));
+    });
+    clearAllLabelsBtn.addEventListener('click', () => {
+      if (!confirm('Remove ALL labels for this activity?')) return;
+      clearAllLabels().catch(err => alert(err.message));
+    });
+
+    // Image change (teacher)
+    changeImageBtn.addEventListener('click', () => imageFile.click());
+    imageFile.addEventListener('change', async (e) => {
       if (!isTeacher) return;
       const file = e.target.files?.[0];
       if (!file) return;
       try {
-        const url = await uploadImageToStorage(file);
-        bgImg.src = url;
-        // If you consider this a new “version” of the activity, you might clear hotspots:
-        // dzEls = []; document.querySelectorAll('.dropzone').forEach(el => el.remove());
+        const ext = file.name.split('.').pop();
+        const object = `activities/${ACTIVITY_ID}/bg.${ext}`;
+        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${object}`, {
+          method: 'PUT',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': file.type
+          },
+          body: file
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${object}`;
+        bgImg.src = publicUrl;
       } catch (err) {
         console.error(err);
         alert('Image upload failed. Check storage bucket/policies. See console for details.');
       } finally {
-        imgFile.value = '';
+        imageFile.value = "";
       }
     });
 
@@ -490,7 +552,6 @@
       renderWordBank();
       refreshAttemptHistory().catch(()=>{});
     }
-
     loginBtn.addEventListener('click', () => {
       const v = (emailInput.value || '').trim();
       if (!v || !v.includes('@')) { alert('Please enter a valid email.'); return; }
@@ -498,13 +559,9 @@
       localStorage.setItem('studentEmail', studentEmail);
       reflectLoginUI();
     });
-
     logoutBtn.addEventListener('click', () => {
-      studentEmail = '';
-      localStorage.removeItem('studentEmail');
-      reflectLoginUI();
-      clearAnswersBtn.click();
-      attemptHistory.innerHTML = '';
+      studentEmail = ''; localStorage.removeItem('studentEmail');
+      reflectLoginUI(); clearAnswersBtn.click(); attemptHistory.innerHTML = '';
     });
 
     // ====== INIT ======
@@ -512,14 +569,8 @@
       reflectLoginUI();
       updateScore();
       const doLoad = async () => {
-        try {
-          await loadActivityImage();         // load saved background image (if any)
-          await loadHotspots();              // then hotspots
-          positionAllDropzones();
-        } catch (err) {
-          console.error('Init failed', err);
-          alert('Could not load image/hotspots. Check Supabase policies and network.');
-        }
+        try { await Promise.all([loadLabels(), loadHotspots()]); positionAllDropzones(); }
+        catch (err) { console.error('Load failed', err); alert('Could not load data.'); }
       };
       if (bgImg.complete) doLoad();
       else bgImg.addEventListener('load', doLoad, { once:true });
