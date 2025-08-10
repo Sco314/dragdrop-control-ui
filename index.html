@@ -384,6 +384,45 @@ controls.innerHTML = `
 `;
 dz.appendChild(controls);
 
+// --- wire buttons (guard each in case markup changes) ---
+const btnDel     = controls.querySelector('.del');
+const btnHsPlus  = controls.querySelector('.hsPlus');
+const btnHsMinus = controls.querySelector('.hsMinus');
+const btnTPlus   = controls.querySelector('.tPlus');
+const btnTMinus  = controls.querySelector('.tMinus');
+
+if (btnDel) btnDel.addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  await deleteHotspot(dz.dataset.id, dz);
+});
+
+if (btnHsPlus) btnHsPlus.addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  const newPct = Math.min(1, (parseFloat(dz.dataset.sizePct) || 0.12) * 1.2);
+  dz.dataset.sizePct = newPct; positionDropzone(dz);
+  await updateHotspot(dz.dataset.id, { size_pct: newPct });
+});
+
+if (btnHsMinus) btnHsMinus.addEventListener('click', async (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  const newPct = Math.max(0.02, (parseFloat(dz.dataset.sizePct) || 0.12) * 0.8);
+  dz.dataset.sizePct = newPct; positionDropzone(dz);
+  await updateHotspot(dz.dataset.id, { size_pct: newPct });
+});
+
+if (btnTPlus) btnTPlus.addEventListener('click', (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  dz.dataset.textScale = (parseFloat(dz.dataset.textScale) || 1) * 1.2;
+  positionDropzone(dz);
+});
+
+if (btnTMinus) btnTMinus.addEventListener('click', (e) => {
+  e.stopPropagation(); if (!isTeacher) return;
+  dz.dataset.textScale = Math.max(0.4, (parseFloat(dz.dataset.textScale) || 1) * 0.8);
+  positionDropzone(dz);
+});
+
+
 // ----- Student click (attempt) — keep this behavior the same -----
 dz.addEventListener('click', async (e) => {
   if (isTeacher) return;              // teacher uses buttons / dragging
@@ -668,4 +707,5 @@ controls.querySelector('.txMinus').addEventListener('click', async (e) => {
   </script>
 </body>
 </html>
+
 
